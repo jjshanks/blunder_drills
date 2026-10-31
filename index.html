@@ -157,6 +157,8 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .fb.info { border-left-color: var(--accent) }
 .fb .line { font-family: var(--f-mono); font-size: 13px; display: block; margin-top: 4px; overflow-wrap: anywhere }
 .copyout { width: 100%; min-height: 120px; font-family: var(--f-mono); font-size: 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); padding: 10px }
+.stepper .btn { min-width: 40px; justify-content: center; font-size: 17px; line-height: 1; padding: 7px 10px }
+.stepauto { margin-left: auto; padding-bottom: 0 }
 .note { font-size: 13px; color: var(--muted); margin: 0; text-wrap: pretty }
 </style>
 </head>
@@ -218,6 +220,14 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
       <div class="bwrap"><div class="bframe" id="bframe"><div class="ranks" id="ranks" aria-hidden="true"></div><div class="board" id="board" aria-label="Chess board"></div><div class="files" id="files" aria-hidden="true"></div></div></div>
       <div class="promo" id="promo" hidden><span class="label">Promote to</span></div>
       <div class="fb info" id="fb" aria-live="polite">Click a piece, then click where it goes.</div>
+      <div class="row stepper" id="stepper" hidden>
+        <button class="btn" id="lStart" aria-label="Start of line" title="Start of line (Home)">«</button>
+        <button class="btn" id="lBack" aria-label="Previous move" title="Previous move (←)">‹</button>
+        <button class="btn" id="lFwd" aria-label="Next move" title="Next move (→)">›</button>
+        <button class="btn" id="lEnd" aria-label="End of line" title="End of line (End)">»</button>
+        <span class="ptext" id="lPos"></span>
+        <label class="check stepauto"><input type="checkbox" id="autoplay"> Autoplay</label>
+      </div>
       <div class="row">
         <button class="btn" id="bPrev">← Prev</button>
         <button class="btn" id="bHint">Hint</button>
@@ -386,7 +396,7 @@ function parseInput(raw) {
 
 /* ---------------- state ---------------- */
 const S = { game: null, evals: [], puzzles: [], who: 'all', run: 0, analyzedDepth: 0, current: -1 };
-const T = { p: null, chess: null, orient: 'w', sel: null, last: null, mode: 'idle', left: 0, token: 0, hint: null, legal: [], pending: null };
+const T = { p: null, chess: null, orient: 'w', sel: null, last: null, mode: 'idle', left: 0, token: 0, hint: null, legal: [], pending: null, line: null };
 
 const moveLabel = (m) => m.color === 'w' ? `${m.moveNo}. ${m.san}` : `${m.moveNo}… ${m.san}`;
 const sideName = c => c === 'w' ? 'White' : 'Black';
@@ -534,7 +544,7 @@ $('#chart').addEventListener('click', e => { const g = e.target.closest('.mk'); 
 
 /* ---------------- trainer ---------------- */
 function showPosition(fen, lastMove) {
-  T.p = null; T.chess = new Chess(fen); T.orient = T.chess.turn(); T.sel = null; T.hint = null; T.mode = 'idle';
+  T.p = null; T.chess = new Chess(fen); T.orient = T.chess.turn(); T.sel = null; T.hint = null; T.mode = 'idle'; T.line = null; renderStepper();
   T.last = lastMove ? [lastMove.from, lastMove.to] : null;
   $('#tchip').className = 'chip best'; $('#tchip').textContent = 'Position'; $('#tcount').textContent = '';
   $('#prompt').textContent = 'Finding puzzles…'; $('#ctx').textContent = ' ';
@@ -544,7 +554,7 @@ function showPosition(fen, lastMove) {
 function loadPuzzle(idx) {
   const p = S.puzzles[idx]; if (!p) return;
   S.current = idx; T.p = p; T.token++;
-  T.chess = new Chess(p.fen); T.orient = p.color; T.sel = null; T.hint = null; T.pending = null; $('#promo').hidden = true;
+  T.chess = new Chess(p.fen); T.orient = p.color; T.sel = null; T.hint = null; T.pending = null; $('#promo').hidden = true; T.line = null; renderStepper();
   T.last = p.prev ? [p.prev.from, p.prev.to] : null;
   T.mode = 'play'; T.left = p.type === 'mate' ? p.mateN : 1; T.firstTry = true;
   $('#tchip').className = 'chip ' + p.type; $('#tchip').textContent = TYPE_LABEL(p);
@@ -663,23 +673,59 @@ async function userMove(m) {
     wrong(mv.san, ours, p.played && uciOf(mv) === p.played.uci ? 'That is the move from the game.' : 'Still too costly.');
   }
 }
-// line: UCI moves from the puzzle position, starting with the solving move, which is already on the board.
-// playOut: also play the rest of the line on the board.
-function solved(msg, line, playOut) {
+// line: UCI moves from the puzzle position. For a mate puzzle it is the moves played, so the board is at
+// its end. Otherwise it starts with the solving move, which is already on the board.
+function solved(msg, line) {
   const p = T.p; T.mode = 'done';
   if (!p.status || p.status === 'new') p.status = T.firstTry ? 'solved' : 'retry';
   setFeedback('good', msg + ' Solved.', (p.type === 'mate' ? 'Line: ' : 'Engine line: ') + pvSan(p.fen, line));
-  renderBoard(); renderList(); updateNav();
-  if (playOut) playLine(line.slice(1), ++T.token);
+  openLine(line, p.type === 'mate' ? line.length : 1);
+  renderList(); updateNav();
 }
-// Play UCI moves on the board, one every 750 ms. Stops when tok is stale (another puzzle or action took over).
-async function playLine(line, tok) {
-  for (const u of line) {
-    await wait(750); if (tok !== T.token) return;
-    const m = T.chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }); if (!m) break;
-    T.last = [m.from, m.to]; T.anim = T.last; renderBoard();
-  }
+
+/* ---------------- line viewer ---------------- */
+// Step through a line of UCI moves from the puzzle position. T.line.i is the number of moves on the board.
+const autoplayOn = () => $('#autoplay').checked;
+function openLine(moves, at) {
+  T.token++; // cancels engine checks and autoplay still running for this puzzle
+  T.line = { moves, parts: pvParts(T.p.fen, moves), i: at };
+  lineGo(at);
+  if (autoplayOn()) autoplay();
 }
+function lineGo(i) {
+  const L = T.line, p = T.p; if (!L) return;
+  i = Math.max(0, Math.min(L.moves.length, i));
+  const c = new Chess(p.fen); let last = p.prev ? [p.prev.from, p.prev.to] : null;
+  for (let k = 0; k < i; k++) { const u = L.moves[k], m = c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }); last = [m.from, m.to] }
+  T.anim = i === L.i + 1 ? last : null; // slide the piece only on a single step forward
+  L.i = i; T.chess = c; T.last = last; T.sel = null; T.hint = null;
+  renderBoard(); renderStepper();
+}
+function step(i) { T.token++; lineGo(i) } // a manual step stops autoplay
+async function autoplay() {
+  const tok = ++T.token, L = T.line;
+  while (L.i < L.moves.length) { await wait(750); if (tok !== T.token || L !== T.line) return; lineGo(L.i + 1) }
+}
+function renderStepper() {
+  const L = T.line; $('#stepper').hidden = !L; if (!L) return;
+  const n = L.moves.length;
+  $('#lPos').textContent = L.i ? `Move ${L.i} of ${n}: ${L.parts[L.i - 1].label}` : `Start · ${n} move${n === 1 ? '' : 's'}`;
+  $('#lStart').disabled = $('#lBack').disabled = L.i === 0;
+  $('#lFwd').disabled = $('#lEnd').disabled = L.i === n;
+}
+$('#lStart').onclick = () => step(0);
+$('#lBack').onclick = () => step(T.line.i - 1);
+$('#lFwd').onclick = () => step(T.line.i + 1);
+$('#lEnd').onclick = () => step(T.line.moves.length);
+$('#autoplay').onchange = () => { store.set('drills.autoplay', autoplayOn() ? '1' : '0'); if (!T.line) return; if (autoplayOn()) autoplay(); else T.token++ };
+$('#autoplay').checked = store.get('drills.autoplay') === '1';
+document.addEventListener('keydown', e => {
+  const L = T.line; if (!L || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.target.closest('textarea, select, input:not([type=checkbox])')) return;
+  const to = { ArrowLeft: L.i - 1, ArrowRight: L.i + 1, Home: 0, End: L.moves.length }[e.key];
+  if (to === undefined) return;
+  e.preventDefault(); step(to);
+});
 function wrong(san, ours, why) {
   const p = T.p; T.firstTry = false; p.tries = (p.tries || 0) + 1;
   setFeedback('bad', `${san}: ${why} Eval ${fmt(forWhite(ours, p.color))}. Try again.`);
@@ -687,24 +733,27 @@ function wrong(san, ours, why) {
   setTimeout(() => { if (T.p !== p) return; T.chess.undo(); const h = T.chess.history({ verbose: true }); T.last = h.length ? [h[h.length - 1].from, h[h.length - 1].to] : (p.prev ? [p.prev.from, p.prev.to] : null); T.mode = 'play'; renderBoard() }, 700);
 }
 const wait = ms => new Promise(r => setTimeout(r, ms));
-function pvSan(fen, pv) {
+// Each move of a UCI line as { label: '6... b5', text: as written in a line, e.g. 'b5' }. Stops at an illegal move.
+function pvParts(fen, pv) {
   const g = new Chess(fen), parts = []; let [, turn, , , , fm] = fen.split(' '); let no = +fm;
   for (let j = 0; j < pv.length; j++) {
     const u = pv[j], m = g.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }); if (!m) break;
-    if (turn === 'w') parts.push(`${no}. ${m.san}`); else { parts.push(j === 0 ? `${no}... ${m.san}` : m.san); no++ }
+    const label = turn === 'w' ? `${no}. ${m.san}` : `${no}... ${m.san}`;
+    parts.push({ label, text: turn === 'w' || j === 0 ? label : m.san });
+    if (turn === 'b') no++;
     turn = turn === 'w' ? 'b' : 'w';
   }
-  return parts.join(' ');
+  return parts;
 }
-async function showSolution() {
+const pvSan = (fen, pv) => pvParts(fen, pv).map(x => x.text).join(' ');
+function showSolution() {
   const p = T.p; if (!p) return;
-  const tok = ++T.token;
   if (p.status !== 'solved' && p.status !== 'retry') p.status = 'revealed';
-  T.chess = new Chess(p.fen); T.mode = 'show'; T.sel = null; T.hint = null; T.last = null; renderBoard();
+  T.mode = 'show';
   const line = p.type === 'mate' ? p.pv : p.pv.slice(0, 6);
   setFeedback('info', 'Solution', pvSan(p.fen, line));
-  renderList();
-  await playLine(line, tok);
+  openLine(line, 0);
+  renderList(); updateNav();
 }
 function updateNav() {
   const vis = visible(); const vi = T.p ? vis.indexOf(T.p) : -1; const has = !!T.p;

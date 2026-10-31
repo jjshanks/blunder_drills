@@ -17,6 +17,17 @@ const current = page => page.evaluate(() => {
   return { fen: p.fen, best: p.best, played: p.played.uci, pv: p.pv };
 });
 const arrow = page => page.locator('#board .arrow');
+// FEN after the first k moves of a UCI line from the puzzle position.
+const fenAfter = (page, p, line, k) => page.evaluate(([fen, line, k]) => {
+  const c = new Chess(fen);
+  for (const u of line.slice(0, k)) c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
+  return c.fen();
+}, [p.fen, line, k]);
+const boardFen = page => page.evaluate(() => window.BlunderDrills.trainer.chess.fen());
+async function expectBoardAt(page, p, line, k) {
+  const fen = await fenAfter(page, p, line, k);
+  await page.waitForFunction(fen => window.BlunderDrills.trainer.chess.fen() === fen, fen, { timeout: 10_000 });
+}
 async function expectGameMoveArrow(page, p) {
   await expect(arrow(page)).toHaveCount(1);
   await expect(arrow(page)).toHaveAttribute('data-from', p.played.slice(0, 2));
@@ -32,7 +43,7 @@ test('analyzes the sample game into the expected puzzles', async ({ page }) => {
   await expect(page.locator('#tcount')).toHaveText('Puzzle 1 of 7');
 });
 
-test('solves a blunder puzzle with the engine move on the first try, then plays out the line', async ({ page }) => {
+test('solves a blunder puzzle on the first try, then steps through the engine line', async ({ page }) => {
   await openAnalyzed(page);
   const p = await current(page);
   await expectGameMoveArrow(page, p);
@@ -42,13 +53,43 @@ test('solves a blunder puzzle with the engine move on the first try, then plays 
   await expect(page.locator('#fb')).toContainText('Solved.');
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('✓ Solved');
   await expect(page.locator('#summary')).toContainText('Solved on first try: 1.');
-  // The board steps through the engine line shown in the feedback.
-  const end = await page.evaluate(p => {
-    const c = new Chess(p.fen);
-    for (const u of p.pv.slice(0, 6)) c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
-    return c.fen();
-  }, p);
-  await page.waitForFunction(fen => window.BlunderDrills.trainer.chess.fen() === fen, end, { timeout: 10_000 });
+
+  // Autoplay is off: the board stays after the solving move.
+  const line = p.pv.slice(0, 6), n = line.length;
+  await expect(page.locator('#stepper')).toBeVisible();
+  await expect(page.locator('#autoplay')).not.toBeChecked();
+  await expect(page.locator('#lPos')).toHaveText(new RegExp(`^Move 1 of ${n}: `));
+  await page.waitForTimeout(1500);
+  expect(await boardFen(page)).toBe(await fenAfter(page, p, line, 1));
+
+  // Step with the keyboard and the buttons.
+  await page.keyboard.press('ArrowRight');
+  await expectBoardAt(page, p, line, 2);
+  await expect(page.locator('#lPos')).toHaveText(new RegExp(`^Move 2 of ${n}: `));
+  await page.locator('#lFwd').click();
+  await expectBoardAt(page, p, line, 3);
+  await page.keyboard.press('ArrowLeft');
+  await expectBoardAt(page, p, line, 2);
+  await page.keyboard.press('End');
+  await expectBoardAt(page, p, line, n);
+  await expect(page.locator('#lFwd')).toBeDisabled();
+  await page.locator('#lStart').click();
+  await expectBoardAt(page, p, line, 0);
+  await expect(page.locator('#lPos')).toHaveText(`Start · ${n} moves`);
+  await expect(page.locator('#lBack')).toBeDisabled();
+
+  // Turning autoplay on plays the rest of the line.
+  await page.locator('#autoplay').check();
+  await expectBoardAt(page, p, line, n);
+});
+
+test('remembers autoplay and then plays the line after a solve', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('drills.autoplay', '1'));
+  await openAnalyzed(page);
+  await expect(page.locator('#autoplay')).toBeChecked();
+  const p = await current(page);
+  await play(page, p.best);
+  await expectBoardAt(page, p, p.pv.slice(0, 6), Math.min(6, p.pv.length));
 });
 
 test('rejects the game move, resets the board, then counts a later solve as a retry', async ({ page }) => {
@@ -81,11 +122,18 @@ test('plays out the missed mate in 2 against the engine', async ({ page }) => {
   await expect(page.locator('#fb')).toContainText('Checkmate. Solved.');
 });
 
-test('Show solution marks the puzzle as revealed', async ({ page }) => {
+test('Show solution marks the puzzle as revealed and opens the line at its start', async ({ page }) => {
   await openAnalyzed(page);
+  const p = await current(page);
   await page.locator('#bSol').click();
   await expect(page.locator('#fb')).toContainText('Solution');
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('Revealed');
+  await expect(page.locator('#lPos')).toHaveText(/^Start · /);
+  await expectBoardAt(page, p, p.pv, 0);
+  await page.keyboard.press('ArrowRight');
+  await expectBoardAt(page, p, p.pv, 1);
+  await page.locator('#bNext').click();
+  await expect(page.locator('#stepper')).toBeHidden();
 });
 
 test('filters puzzles by player', async ({ page }) => {
