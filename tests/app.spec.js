@@ -19,7 +19,7 @@ const current = page => page.evaluate(() => {
 const arrow = page => page.locator('#board .arrow');
 // FEN after the first k moves of a UCI line from the puzzle position.
 const fenAfter = (page, p, line, k) => page.evaluate(([fen, line, k]) => {
-  const c = new Chess(fen);
+  const c = new window.BlunderDrills.Chess(fen);
   for (const u of line.slice(0, k)) c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
   return c.fen();
 }, [p.fen, line, k]);
@@ -140,8 +140,8 @@ test('plays out the missed mate in 2 against the engine', async ({ page }) => {
   await play(page, (await current(page)).best);
   await expect(page.locator('#fb')).toContainText('Opponent replies');
   const mate = await page.evaluate(() => {
-    const c = new Chess(window.BlunderDrills.trainer.chess.fen());
-    const m = c.moves({ verbose: true }).find(m => { c.move(m); const x = c.in_checkmate(); c.undo(); return x });
+    const c = new window.BlunderDrills.Chess(window.BlunderDrills.trainer.chess.fen());
+    const m = c.moves({ verbose: true }).find(m => { c.move(m); const x = c.isCheckmate(); c.undo(); return x });
     return m.from + m.to;
   });
   await play(page, mate);
@@ -191,10 +191,11 @@ test('filters puzzles by player', async ({ page }) => {
 
 test('exports one valid Lichess study chapter per puzzle', async ({ page }) => {
   await openAnalyzed(page);
-  const chapters = await page.evaluate(() => window.BlunderDrills.studyPgn().split('\n\n\n')
-    .map(ch => ({ fen: /\[FEN "([^"]+)"\]/.exec(ch)[1], ok: new Chess().load_pgn(ch) })));
+  const chapters = await page.evaluate(() => window.BlunderDrills.studyPgn().split('\n\n\n').map(ch => {
+    try { new window.BlunderDrills.Chess().loadPgn(ch); return true } catch { return false }
+  }));
   expect(chapters).toHaveLength(7);
-  expect(chapters.every(c => c.ok)).toBe(true);
+  expect(chapters.every(Boolean)).toBe(true);
 });
 
 test('analyzes a pasted game that ends in checkmate and remembers it after reload', async ({ page }) => {

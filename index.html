@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<script src="https://cdn.jsdelivr.net/npm/chess.js@0.10.3/chess.js"></script>
+<script type="importmap">{ "integrity": { "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js": "sha384-A9KE46F70Ao1BUdhGSxgP0+9OhPjBrpf6gsBehqG12SbeKbFWnO7bwtNT68I4xKh" } }</script>
 <style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 <style>
 /* Layout: two-column workbench — game input, eval graph and puzzle list on the left; a sticky training board on the right. Stacks on phones. */
@@ -259,9 +259,8 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
   <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, CC BY-SA 3.0.</p>
 </div>
 
-<script>
-(() => {
-'use strict';
+<script type="module">
+import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js';
 const $ = s => document.querySelector(s);
 const FILES = 'abcdefgh';
 const PNAME = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
@@ -396,8 +395,8 @@ function parseInput(raw) {
   if (!txt) throw new Error('Paste a PGN to analyze.');
   if (/^([rnbqkpRNBQKP1-8]+\/){7}[rnbqkpRNBQKP1-8]+\s+[wb](\s|$)/.test(txt)) throw new Error('That looks like a single position (FEN). Paste a whole game in PGN format.');
   const g = new Chess();
-  if (!g.load_pgn(cleanPgn(txt), { sloppy: true })) throw new Error('Could not read that PGN. Check the move list for typos or illegal moves.');
-  const headers = g.header();
+  try { g.loadPgn(cleanPgn(txt)) } catch { throw new Error('Could not read that PGN. Check the move list for typos or illegal moves.') }
+  const headers = g.getHeaders();
   const hist = g.history({ verbose: true });
   if (!hist.length) throw new Error('That PGN has no moves.');
   const startFen = headers.FEN || START;
@@ -442,8 +441,8 @@ async function analyze() {
     const c = new Chess(fen);
     setProgress(k / n, `Analyzing position ${k + 1} of ${n} · depth ${depth}`);
     let ev;
-    if (c.in_checkmate()) ev = { score: { mate: 0, lost: true }, pv: [], best: null };
-    else if (c.in_stalemate() || c.insufficient_material()) ev = { score: { cp: 0 }, pv: [], best: null };
+    if (c.isCheckmate()) ev = { score: { mate: 0, lost: true }, pv: [], best: null };
+    else if (c.isStalemate() || c.isInsufficientMaterial()) ev = { score: { cp: 0 }, pv: [], best: null };
     else ev = await Engine.analyse(fen, depth);
     if (run !== S.run) return;
     S.evals[k] = ev;
@@ -593,7 +592,7 @@ function renderBoard() {
   T.legal = T.mode === 'play' ? T.chess.moves({ verbose: true }) : [];
   const targets = T.sel ? T.legal.filter(m => m.from === T.sel) : [];
   let checkSq = null;
-  if (T.chess.in_check()) { const t = T.chess.turn(); for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { const q = B[r][c]; if (q && q.type === 'k' && q.color === t) checkSq = FILES[c] + (8 - r) } }
+  if (T.chess.inCheck()) { const t = T.chess.turn(); for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { const q = B[r][c]; if (q && q.type === 'k' && q.color === t) checkSq = FILES[c] + (8 - r) } }
   for (let row = 0; row < 8; row++) for (let col = 0; col < 8; col++) {
     const r = T.orient === 'w' ? row : 7 - row, c = T.orient === 'w' ? col : 7 - col;
     const sq = FILES[c] + (8 - r);
@@ -704,7 +703,7 @@ async function userMove(m) {
   const mv = T.chess.move({ from: m.from, to: m.to, promotion: m.promotion });
   T.sel = null; T.hint = null; T.last = [mv.from, mv.to]; T.anim = T.last; T.mode = 'wait'; renderBoard();
   if (p.type === 'mate') {
-    if (T.chess.in_checkmate()) return solved('Checkmate.', T.chess.history({ verbose: true }).map(uciOf), p.before);
+    if (T.chess.isCheckmate()) return solved('Checkmate.', T.chess.history({ verbose: true }).map(uciOf), p.before);
     setFeedback('info', 'Checking your move…');
     const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
     if (tok !== T.token) return;
@@ -826,7 +825,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 function pvParts(fen, pv) {
   const g = new Chess(fen), parts = []; let [, turn, , , , fm] = fen.split(' '); let no = +fm;
   for (let j = 0; j < pv.length; j++) {
-    const u = pv[j], m = g.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }); if (!m) break;
+    const u = pv[j]; let m;
+    try { m = g.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }) } catch { break }
     const label = turn === 'w' ? `${no}. ${m.san}` : `${no}... ${m.san}`;
     parts.push({ label, text: turn === 'w' || j === 0 ? label : m.san });
     if (turn === 'b') no++;
@@ -895,8 +895,7 @@ Engine.start().catch(() => { $('#err').textContent = 'Stockfish could not start 
 analyze();
 
 // Read-only hooks for the automated tests in tests/. The app does not use them.
-window.BlunderDrills = Object.freeze({ cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, studyPgn, state: S, trainer: T });
-})();
+window.BlunderDrills = Object.freeze({ cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, studyPgn, state: S, trainer: T, Chess });
 </script>
 
 </body>

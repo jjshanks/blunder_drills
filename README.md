@@ -56,7 +56,7 @@ Third-party parts are not MIT:
   [`stockfish@18.0.8`](https://www.npmjs.com/package/stockfish) package from
   unpkg at run time and talks to it only through UCI text messages.
   Source: <https://github.com/nmrugg/stockfish.js>
-- **chess.js** 0.10.3, by Jeff Hlywa, is BSD 2-Clause. It loads from jsDelivr.
+- **chess.js** 1.4.0, by Jeff Hlywa, is BSD 2-Clause. It loads from jsDelivr.
 - **Chess pieces** inside `index.html` are by Cburnett, from Wikimedia Commons,
   CC BY-SA 3.0.
 - **Fonts** (Bricolage Grotesque, IBM Plex) load from Google Fonts under the

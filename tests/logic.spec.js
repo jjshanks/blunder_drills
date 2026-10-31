@@ -46,9 +46,9 @@ test.describe('scores', () => {
 
 test('material counts White minus Black in pawns', async ({ page }) => {
   const r = await run(page, D => [
-    D.material(new Chess()),
-    D.material(new Chess('4k3/8/8/8/8/8/8/3QK3 w - - 0 1')),
-    D.material(new Chess('rn2k3/8/8/8/8/8/8/4K3 w - - 0 1')),
+    D.material(new D.Chess()),
+    D.material(new D.Chess('4k3/8/8/8/8/8/8/3QK3 w - - 0 1')),
+    D.material(new D.Chess('rn2k3/8/8/8/8/8/8/4K3 w - - 0 1')),
   ]);
   expect(r).toEqual([0, 9, -8]);
 });
