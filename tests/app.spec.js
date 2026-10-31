@@ -14,8 +14,14 @@ async function play(page, uci) {
 }
 const current = page => page.evaluate(() => {
   const p = window.BlunderDrills.trainer.p;
-  return { fen: p.fen, best: p.best, played: p.played.uci };
+  return { fen: p.fen, best: p.best, played: p.played.uci, pv: p.pv };
 });
+const arrow = page => page.locator('#board .arrow');
+async function expectGameMoveArrow(page, p) {
+  await expect(arrow(page)).toHaveCount(1);
+  await expect(arrow(page)).toHaveAttribute('data-from', p.played.slice(0, 2));
+  await expect(arrow(page)).toHaveAttribute('data-to', p.played.slice(2, 4));
+}
 
 test('analyzes the sample game into the expected puzzles', async ({ page }) => {
   await openAnalyzed(page);
@@ -26,14 +32,23 @@ test('analyzes the sample game into the expected puzzles', async ({ page }) => {
   await expect(page.locator('#tcount')).toHaveText('Puzzle 1 of 7');
 });
 
-test('solves a blunder puzzle with the engine move on the first try', async ({ page }) => {
+test('solves a blunder puzzle with the engine move on the first try, then plays out the line', async ({ page }) => {
   await openAnalyzed(page);
   const p = await current(page);
+  await expectGameMoveArrow(page, p);
   await play(page, p.best);
+  await expect(arrow(page)).toHaveCount(0);
   await expect(page.locator('#fb')).toHaveClass(/good/);
   await expect(page.locator('#fb')).toContainText('Solved.');
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('✓ Solved');
   await expect(page.locator('#summary')).toContainText('Solved on first try: 1.');
+  // The board steps through the engine line shown in the feedback.
+  const end = await page.evaluate(p => {
+    const c = new Chess(p.fen);
+    for (const u of p.pv.slice(0, 6)) c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
+    return c.fen();
+  }, p);
+  await page.waitForFunction(fen => window.BlunderDrills.trainer.chess.fen() === fen, end, { timeout: 10_000 });
 });
 
 test('rejects the game move, resets the board, then counts a later solve as a retry', async ({ page }) => {
@@ -46,6 +61,7 @@ test('rejects the game move, resets the board, then counts a later solve as a re
     const t = window.BlunderDrills.trainer;
     return t.mode === 'play' && t.chess.fen() === fen;
   }, p.fen);
+  await expectGameMoveArrow(page, p);
   await play(page, p.best);
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('Solved after retry');
 });

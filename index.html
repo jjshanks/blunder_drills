@@ -130,6 +130,8 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .ranks { grid-template-rows: repeat(8, 1fr); place-items: center }
 .files { grid-column: 2; grid-template-columns: repeat(8, 1fr); place-items: center }
 .board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr)); aspect-ratio: 1; min-width: 0; border-radius: 3px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0,0,0,.35); user-select: none; -webkit-user-select: none; touch-action: manipulation }
+.board { position: relative }
+.arrow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; opacity: .8; --arrow: #d2311c } /* same red in both themes: the board colors barely change */
 .sq { position: relative; border: 0; padding: 0; margin: 0; display: block; cursor: pointer; min-width: 0; min-height: 0; -webkit-tap-highlight-color: transparent }
 .sq.l { background-color: var(--sq-l) } .sq.d { background-color: var(--sq-d) }
 .sq.last { background-image: linear-gradient(var(--hl-last), var(--hl-last)) }
@@ -549,7 +551,7 @@ function loadPuzzle(idx) {
   const side = sideName(p.color);
   $('#prompt').textContent = p.type === 'mate' ? `${side} to move. Mate in ${p.mateN}.` : `${side} to move. Find a better move.`;
   $('#ctx').textContent = `In the game: ${moveLabel(p.played)}  (${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))})`;
-  setFeedback('info', p.type === 'mate' ? 'Find the forcing line. The engine will defend for the other side.' : 'Click a piece, then click where it goes.');
+  setFeedback('info', p.type === 'mate' ? 'The arrow shows the move from the game, which missed the mate. Find the forcing line. The engine will defend for the other side.' : 'The arrow shows the move from the game. Find a better one: click a piece, then click where it goes.');
   renderBoard(); renderList(); drawChart(); updateNav();
 }
 function setFeedback(kind, text, line) {
@@ -585,7 +587,21 @@ function renderBoard() {
   const fl = T.orient === 'w' ? FILES.split('') : FILES.split('').reverse();
   $('#files').innerHTML = fl.map(f => `<span>${f}</span>`).join('');
   $('#ranks').innerHTML = (T.orient === 'w' ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8]).map(r => `<span>${r}</span>`).join('');
+  if (T.p && T.mode === 'play' && T.chess.fen() === T.p.fen) el.appendChild(arrowEl(T.p.played.from, T.p.played.to));
   if (T.anim) { slide(T.anim); T.anim = null }
+}
+// Arrow for a move, drawn over the board in square units (viewBox 0 0 8 8).
+function arrowEl(from, to) {
+  const xy = sq => { const f = FILES.indexOf(sq[0]), r = +sq[1] - 1; return T.orient === 'w' ? [f + .5, 7.5 - r] : [7.5 - f, r + .5] };
+  const [x1, y1] = xy(from), [x2, y2] = xy(to);
+  const len = Math.hypot(x2 - x1, y2 - y1), dx = (x2 - x1) / len, dy = (y2 - y1) / len;
+  const bx = x2 - dx * .45, by = y2 - dy * .45, w = .28; // arrowhead base and half-width
+  const s = document.createElementNS(SVGNS, 'svg');
+  s.setAttribute('class', 'arrow'); s.setAttribute('viewBox', '0 0 8 8'); s.setAttribute('aria-hidden', 'true');
+  s.dataset.from = from; s.dataset.to = to;
+  s.innerHTML = `<line x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}" style="stroke:var(--arrow)" stroke-width=".17" stroke-linecap="round"/>`
+    + `<polygon points="${x2},${y2} ${bx - dy * w},${by + dx * w} ${bx + dy * w},${by - dx * w}" style="fill:var(--arrow)"/>`;
+  return s;
 }
 function slide([from, to]) {
   const pcEl = $(`.sq[data-sq="${to}"] .pc`); if (!pcEl) return;
@@ -624,7 +640,7 @@ async function userMove(m) {
   const mv = T.chess.move({ from: m.from, to: m.to, promotion: m.promotion });
   T.sel = null; T.hint = null; T.last = [mv.from, mv.to]; T.anim = T.last; T.mode = 'wait'; renderBoard();
   if (p.type === 'mate') {
-    if (T.chess.in_checkmate()) return solved('Checkmate.');
+    if (T.chess.in_checkmate()) return solved('Checkmate.', T.chess.history({ verbose: true }).map(uciOf), false);
     setFeedback('info', 'Checking your move…');
     const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
     if (tok !== T.token) return;
@@ -638,20 +654,31 @@ async function userMove(m) {
       setFeedback('good', `Opponent replies ${reply.san}. Mate in ${T.left}.`);
     } else return wrong(mv.san, ours, isMate(ours) && ours.mate > 0 ? `That still mates, but in ${ours.mate}, not ${T.left - 1}.` : 'That lets the king escape.');
   } else {
-    if (uciOf(mv) === p.best) return solved(`${mv.san} is the engine's top choice.`);
+    if (uciOf(mv) === p.best) return solved(`${mv.san} is the engine's top choice.`, p.pv.slice(0, 6), true);
     setFeedback('info', 'Checking your move…');
     const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
     if (tok !== T.token) return;
     const ours = neg(r.score);
-    if (wc(ours) >= wc(p.before) - 0.1) return solved(`${mv.san} works too (${fmt(forWhite(ours, p.color))}).`);
+    if (wc(ours) >= wc(p.before) - 0.1) return solved(`${mv.san} works too (${fmt(forWhite(ours, p.color))}).`, [uciOf(mv), ...r.pv].slice(0, 6), true);
     wrong(mv.san, ours, p.played && uciOf(mv) === p.played.uci ? 'That is the move from the game.' : 'Still too costly.');
   }
 }
-function solved(msg) {
+// line: UCI moves from the puzzle position, starting with the solving move, which is already on the board.
+// playOut: also play the rest of the line on the board.
+function solved(msg, line, playOut) {
   const p = T.p; T.mode = 'done';
   if (!p.status || p.status === 'new') p.status = T.firstTry ? 'solved' : 'retry';
-  setFeedback('good', msg + ' Solved.', 'Engine line: ' + pvSan(p.fen, p.type === 'mate' ? p.pv : p.pv.slice(0, 6)));
+  setFeedback('good', msg + ' Solved.', (p.type === 'mate' ? 'Line: ' : 'Engine line: ') + pvSan(p.fen, line));
   renderBoard(); renderList(); updateNav();
+  if (playOut) playLine(line.slice(1), ++T.token);
+}
+// Play UCI moves on the board, one every 750 ms. Stops when tok is stale (another puzzle or action took over).
+async function playLine(line, tok) {
+  for (const u of line) {
+    await wait(750); if (tok !== T.token) return;
+    const m = T.chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }); if (!m) break;
+    T.last = [m.from, m.to]; T.anim = T.last; renderBoard();
+  }
 }
 function wrong(san, ours, why) {
   const p = T.p; T.firstTry = false; p.tries = (p.tries || 0) + 1;
@@ -677,11 +704,7 @@ async function showSolution() {
   const line = p.type === 'mate' ? p.pv : p.pv.slice(0, 6);
   setFeedback('info', 'Solution', pvSan(p.fen, line));
   renderList();
-  for (const u of line) {
-    await wait(750); if (tok !== T.token) return;
-    const m = T.chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }); if (!m) break;
-    T.last = [m.from, m.to]; T.anim = T.last; renderBoard();
-  }
+  await playLine(line, tok);
 }
 function updateNav() {
   const vis = visible(); const vi = T.p ? vis.indexOf(T.p) : -1; const has = !!T.p;
