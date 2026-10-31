@@ -350,7 +350,7 @@ function cleanPgn(txt) {
   const lines = txt.replace(/\r/g, '').split('\n');
   const head = [], body = [];
   for (const ln of lines) (/^\s*\[\w+\s+".*"\]\s*$/.test(ln) && !body.length ? head : body).push(ln.trim());
-  let mv = body.join(' ').replace(/\{[^}]*\}/g, ' ').replace(/;[^\n]*/g, ' ');
+  let mv = body.join('\n').replace(/\{[^}]*\}/g, ' ').replace(/;[^\n]*/g, ' ');
   while (/\([^()]*\)/.test(mv)) mv = mv.replace(/\([^()]*\)/g, ' ');
   mv = mv.replace(/\$\d+/g, ' ').replace(/[?!]+/g, '').replace(/\s+/g, ' ').trim();
   return head.join('\n') + (head.length ? '\n\n' : '') + mv;
