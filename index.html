@@ -421,10 +421,10 @@ async function analyze() {
 }
 function setProgress(f, text) { $('#barFill').style.width = (f * 100).toFixed(1) + '%'; $('#ptext').textContent = text }
 
-function detectPuzzles() {
-  const g = S.game, E = S.evals, out = [];
+// g: parsed game; E: engine result per position (may have gaps while analysis runs).
+function detectPuzzles(g, E, { maxMate, withMistakes }) {
+  const out = [];
   if (!g) return out;
-  const maxMate = +$('#maxMate').value, withMistakes = $('#mistakes').checked;
   for (let i = 0; i < g.moves.length; i++) {
     const a = E[i], b = E[i + 1];
     if (!a || !b || !a.best) continue;
@@ -443,7 +443,7 @@ function detectPuzzles() {
   return out;
 }
 function refreshPuzzles() {
-  const fresh = detectPuzzles();
+  const fresh = detectPuzzles(S.game, S.evals, { maxMate: +$('#maxMate').value, withMistakes: $('#mistakes').checked });
   const old = new Map(S.puzzles.map(p => [p.ply + p.type, p]));
   S.puzzles = fresh.map(p => { const o = old.get(p.ply + p.type); if (o) return Object.assign(o, p, { status: o.status, tries: o.tries }); p.status = 'new'; p.tries = 0; return p });
   S.current = T.p ? S.puzzles.indexOf(T.p) : -1;
@@ -727,6 +727,9 @@ showPosition(START, null);
 drawChart();
 Engine.start().catch(() => { $('#err').textContent = 'Stockfish could not start in this browser. Try a current Chrome, Edge, Firefox or Safari.'; $('#err').hidden = false });
 analyze();
+
+// Read-only hooks for the automated tests in tests/. The app does not use them.
+window.BlunderDrills = Object.freeze({ cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, studyPgn, state: S, trainer: T });
 })();
 </script>
 
