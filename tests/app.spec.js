@@ -83,6 +83,32 @@ test('solves a blunder puzzle on the first try, then steps through the engine li
   await expectBoardAt(page, p, line, n);
 });
 
+test('compares the better line with the game line', async ({ page }) => {
+  await openAnalyzed(page);
+  const p = await current(page); // 5... Be7, -1.7 -> +0.3
+  await play(page, p.best);
+  const best = page.locator('#lWhich button[data-k="best"]'), game = page.locator('#lWhich button[data-k="game"]');
+  await expect(best).toHaveAttribute('aria-pressed', 'true');
+  await expect(best).toContainText('Better: 5... ');
+  await expect(page.locator('#lSum')).toContainText('Engine eval for this line: −1.7, Black is better');
+  await expect(page.locator('#lSum')).toContainText('Material here: ');
+  await expect(page.locator('#lLine .cur')).toHaveCount(1);
+  await page.keyboard.press('ArrowRight'); // better line now at move 2
+
+  await game.click();
+  await expect(game).toHaveAttribute('aria-pressed', 'true');
+  await expect(game).toHaveText('Game: 5... Be7');
+  await expect(page.locator('#lSum')).toContainText('Engine eval for this line: +0.3, White is better');
+  await expect(page.locator('#lPos')).toHaveText(/^Start · /);
+  await expectBoardAt(page, p, [], 0);
+  await page.keyboard.press('ArrowRight');
+  await expectBoardAt(page, p, [p.played], 1);
+  await expect(page.locator('#lLine .cur')).toHaveText('5... Be7');
+
+  await best.click(); // each line keeps its place
+  await expectBoardAt(page, p, p.pv, 2);
+});
+
 test('remembers autoplay and then plays the line after a solve', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('drills.autoplay', '1'));
   await openAnalyzed(page);
@@ -120,6 +146,25 @@ test('plays out the missed mate in 2 against the engine', async ({ page }) => {
   });
   await play(page, mate);
   await expect(page.locator('#fb')).toContainText('Checkmate. Solved.');
+});
+
+test('solves a puzzle by dragging a piece', async ({ page }) => {
+  await openAnalyzed(page);
+  const p = await current(page);
+  await page.locator(`.sq[data-sq="${p.best.slice(0, 2)}"]`).dragTo(page.locator(`.sq[data-sq="${p.best.slice(2, 4)}"]`));
+  await expect(page.locator('#fb')).toContainText('Solved.');
+  await expect(page.locator('.pc.ghost')).toHaveCount(0);
+});
+
+test('dropping a piece on an illegal square puts it back', async ({ page }) => {
+  await openAnalyzed(page);
+  const p = await current(page);
+  const from = p.best.slice(0, 2), to = from === 'a1' ? 'h8' : 'a1';
+  await page.locator(`.sq[data-sq="${from}"]`).dragTo(page.locator(`.sq[data-sq="${to}"]`));
+  await expect(page.locator('.pc.ghost')).toHaveCount(0);
+  expect(await boardFen(page)).toBe(p.fen);
+  expect(await page.evaluate(() => [window.BlunderDrills.trainer.mode, window.BlunderDrills.trainer.sel])).toEqual(['play', null]);
+  await expect(page.locator('#fb')).toHaveClass(/info/);
 });
 
 test('Show solution marks the puzzle as revealed and opens the line at its start', async ({ page }) => {

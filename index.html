@@ -130,7 +130,10 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .ranks { grid-template-rows: repeat(8, 1fr); place-items: center }
 .files { grid-column: 2; grid-template-columns: repeat(8, 1fr); place-items: center }
 .board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr)); aspect-ratio: 1; min-width: 0; border-radius: 3px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0,0,0,.35); user-select: none; -webkit-user-select: none; touch-action: manipulation }
-.board { position: relative }
+.board { position: relative; touch-action: none } /* touch-action: drag pieces without scrolling the page */
+.sq.mine { cursor: grab }
+.pc.lifted { opacity: .3 }
+.pc.ghost { position: fixed; left: 0; top: 0; z-index: 50; cursor: grabbing }
 .arrow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; opacity: .8; --arrow: #d2311c } /* same red in both themes: the board colors barely change */
 .sq { position: relative; border: 0; padding: 0; margin: 0; display: block; cursor: pointer; min-width: 0; min-height: 0; -webkit-tap-highlight-color: transparent }
 .sq.l { background-color: var(--sq-l) } .sq.d { background-color: var(--sq-d) }
@@ -157,6 +160,13 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .fb.info { border-left-color: var(--accent) }
 .fb .line { font-family: var(--f-mono); font-size: 13px; display: block; margin-top: 4px; overflow-wrap: anywhere }
 .copyout { width: 100%; min-height: 120px; font-family: var(--f-mono); font-size: 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); padding: 10px }
+.stepper { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px }
+.stepper .seg { justify-self: start }
+.lline { margin: 0; font-family: var(--f-mono); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere }
+.lline span { padding: 1px 3px; border-radius: 4px }
+.lline span.cur { background: var(--accent-soft); color: var(--ink); font-weight: 500; box-shadow: inset 0 -2px 0 var(--accent) }
+.lsum { margin: 0; font-size: 13.5px; color: var(--muted) }
+.lsum b { color: var(--ink); font-weight: 600 }
 .stepper .btn { min-width: 40px; justify-content: center; font-size: 17px; line-height: 1; padding: 7px 10px }
 .stepauto { margin-left: auto; padding-bottom: 0 }
 .note { font-size: 13px; color: var(--muted); margin: 0; text-wrap: pretty }
@@ -220,13 +230,21 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
       <div class="bwrap"><div class="bframe" id="bframe"><div class="ranks" id="ranks" aria-hidden="true"></div><div class="board" id="board" aria-label="Chess board"></div><div class="files" id="files" aria-hidden="true"></div></div></div>
       <div class="promo" id="promo" hidden><span class="label">Promote to</span></div>
       <div class="fb info" id="fb" aria-live="polite">Click a piece, then click where it goes.</div>
-      <div class="row stepper" id="stepper" hidden>
-        <button class="btn" id="lStart" aria-label="Start of line" title="Start of line (Home)">«</button>
-        <button class="btn" id="lBack" aria-label="Previous move" title="Previous move (←)">‹</button>
-        <button class="btn" id="lFwd" aria-label="Next move" title="Next move (→)">›</button>
-        <button class="btn" id="lEnd" aria-label="End of line" title="End of line (End)">»</button>
-        <span class="ptext" id="lPos"></span>
-        <label class="check stepauto"><input type="checkbox" id="autoplay"> Autoplay</label>
+      <div class="stepper" id="stepper" hidden>
+        <div class="seg" id="lWhich" role="group" aria-label="Line to show">
+          <button type="button" data-k="best"></button>
+          <button type="button" data-k="game"></button>
+        </div>
+        <p class="lline" id="lLine"></p>
+        <p class="lsum" id="lSum"></p>
+        <div class="row">
+          <button class="btn" id="lStart" aria-label="Start of line" title="Start of line (Home)">«</button>
+          <button class="btn" id="lBack" aria-label="Previous move" title="Previous move (←)">‹</button>
+          <button class="btn" id="lFwd" aria-label="Next move" title="Next move (→)">›</button>
+          <button class="btn" id="lEnd" aria-label="End of line" title="End of line (End)">»</button>
+          <span class="ptext" id="lPos"></span>
+          <label class="check stepauto"><input type="checkbox" id="autoplay"> Autoplay</label>
+        </div>
       </div>
       <div class="row">
         <button class="btn" id="bPrev">← Prev</button>
@@ -396,7 +414,7 @@ function parseInput(raw) {
 
 /* ---------------- state ---------------- */
 const S = { game: null, evals: [], puzzles: [], who: 'all', run: 0, analyzedDepth: 0, current: -1 };
-const T = { p: null, chess: null, orient: 'w', sel: null, last: null, mode: 'idle', left: 0, token: 0, hint: null, legal: [], pending: null, line: null };
+const T = { p: null, chess: null, orient: 'w', sel: null, last: null, mode: 'idle', left: 0, token: 0, hint: null, legal: [], pending: null, line: null, lines: null };
 
 const moveLabel = (m) => m.color === 'w' ? `${m.moveNo}. ${m.san}` : `${m.moveNo}… ${m.san}`;
 const sideName = c => c === 'w' ? 'White' : 'Black';
@@ -448,7 +466,7 @@ function detectPuzzles(g, E, { maxMate, withMistakes }) {
     if (!a || !b || !a.best) continue;
     const m = g.moves[i];
     const before = a.score, after = neg(b.score);
-    const base = { ply: i, color: m.color, fen: g.positions[i], best: a.best, pv: a.pv, before, after, played: m, prev: i > 0 ? g.moves[i - 1] : null };
+    const base = { ply: i, color: m.color, fen: g.positions[i], best: a.best, pv: a.pv, refute: b.pv, before, after, played: m, prev: i > 0 ? g.moves[i - 1] : null };
     const md = mateDist(before);
     if (md >= 1 && md <= maxMate) {
       if (mateDist(after) > md - 1 && m.uci !== a.best) out.push({ ...base, type: 'mate', mateN: md });
@@ -624,6 +642,7 @@ function slide([from, to]) {
   setTimeout(() => pcEl.classList.remove('slide'), 220);
 }
 $('#board').addEventListener('click', e => {
+  if (performance.now() - drag.endedAt < 100) return; // this click ends a drag
   const b = e.target.closest('.sq'); if (!b || T.mode !== 'play' || !T.p) return;
   const sq = b.dataset.sq;
   if (T.sel) {
@@ -634,6 +653,41 @@ $('#board').addEventListener('click', e => {
   T.sel = pc && pc.color === T.chess.turn() && pc.color === T.p.color && T.sel !== sq ? sq : null;
   renderBoard();
 });
+// Drag and drop. A press that moves less than a few pixels stays a click, so click-click still works.
+const drag = { from: null, id: null, x0: 0, y0: 0, ghost: null, size: 0, endedAt: -1 };
+$('#board').addEventListener('pointerdown', e => {
+  if (e.button !== 0 || T.mode !== 'play' || !T.p) return;
+  const b = e.target.closest('.sq'), pc = b && T.chess.get(b.dataset.sq);
+  if (!pc || pc.color !== T.chess.turn() || pc.color !== T.p.color) return;
+  Object.assign(drag, { from: b.dataset.sq, id: e.pointerId, x0: e.clientX, y0: e.clientY, ghost: null });
+});
+$('#board').addEventListener('pointermove', e => {
+  if (!drag.from || e.pointerId !== drag.id) return;
+  if (!(e.buttons & 1)) { drag.from = null; return } // released outside the board: no drag
+  if (!drag.ghost) {
+    if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 5) return;
+    $('#board').setPointerCapture(e.pointerId); // only now: capturing earlier would retarget plain clicks to the board
+    T.sel = drag.from; renderBoard(); // shows the legal targets
+    const src = $(`.sq[data-sq="${drag.from}"] .pc`);
+    drag.size = src.getBoundingClientRect().width;
+    drag.ghost = src.cloneNode(true); drag.ghost.classList.add('ghost');
+    drag.ghost.style.width = drag.ghost.style.height = drag.size + 'px';
+    document.body.appendChild(drag.ghost); src.classList.add('lifted');
+  }
+  drag.ghost.style.transform = `translate(${e.clientX - drag.size / 2}px, ${e.clientY - drag.size / 2}px)`;
+});
+function endDrag(e, drop) {
+  if (!drag.from || e.pointerId !== drag.id) return;
+  const from = drag.from, ghost = drag.ghost; drag.from = null;
+  if (!ghost) return; // no drag: the click handler takes it
+  ghost.remove(); drag.endedAt = performance.now();
+  const sq = drop && document.elementFromPoint(e.clientX, e.clientY)?.closest('#board .sq');
+  const ms = sq ? T.legal.filter(m => m.from === from && m.to === sq.dataset.sq) : [];
+  if (!ms.length) { T.sel = null; renderBoard(); return }
+  if (ms[0].promotion) { renderBoard(); askPromo(ms) } else userMove(ms[0]);
+}
+$('#board').addEventListener('pointerup', e => endDrag(e, true));
+$('#board').addEventListener('pointercancel', e => endDrag(e, false));
 function askPromo(ms) {
   const box = $('#promo'); box.hidden = false;
   box.querySelectorAll('button').forEach(b => b.remove());
@@ -650,7 +704,7 @@ async function userMove(m) {
   const mv = T.chess.move({ from: m.from, to: m.to, promotion: m.promotion });
   T.sel = null; T.hint = null; T.last = [mv.from, mv.to]; T.anim = T.last; T.mode = 'wait'; renderBoard();
   if (p.type === 'mate') {
-    if (T.chess.in_checkmate()) return solved('Checkmate.', T.chess.history({ verbose: true }).map(uciOf), false);
+    if (T.chess.in_checkmate()) return solved('Checkmate.', T.chess.history({ verbose: true }).map(uciOf), p.before);
     setFeedback('info', 'Checking your move…');
     const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
     if (tok !== T.token) return;
@@ -664,34 +718,58 @@ async function userMove(m) {
       setFeedback('good', `Opponent replies ${reply.san}. Mate in ${T.left}.`);
     } else return wrong(mv.san, ours, isMate(ours) && ours.mate > 0 ? `That still mates, but in ${ours.mate}, not ${T.left - 1}.` : 'That lets the king escape.');
   } else {
-    if (uciOf(mv) === p.best) return solved(`${mv.san} is the engine's top choice.`, p.pv.slice(0, 6), true);
+    if (uciOf(mv) === p.best) return solved(`${mv.san} is the engine's top choice.`, p.pv.slice(0, 6), p.before);
     setFeedback('info', 'Checking your move…');
     const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
     if (tok !== T.token) return;
     const ours = neg(r.score);
-    if (wc(ours) >= wc(p.before) - 0.1) return solved(`${mv.san} works too (${fmt(forWhite(ours, p.color))}).`, [uciOf(mv), ...r.pv].slice(0, 6), true);
+    if (wc(ours) >= wc(p.before) - 0.1) return solved(`${mv.san} works too (${fmt(forWhite(ours, p.color))}).`, [uciOf(mv), ...r.pv].slice(0, 6), ours);
     wrong(mv.san, ours, p.played && uciOf(mv) === p.played.uci ? 'That is the move from the game.' : 'Still too costly.');
   }
 }
 // line: UCI moves from the puzzle position. For a mate puzzle it is the moves played, so the board is at
 // its end. Otherwise it starts with the solving move, which is already on the board.
-function solved(msg, line) {
+// score: the engine's score of that line, for the side to move in the puzzle.
+function solved(msg, line, score) {
   const p = T.p; T.mode = 'done';
   if (!p.status || p.status === 'new') p.status = T.firstTry ? 'solved' : 'retry';
-  setFeedback('good', msg + ' Solved.', (p.type === 'mate' ? 'Line: ' : 'Engine line: ') + pvSan(p.fen, line));
-  openLine(line, p.type === 'mate' ? line.length : 1);
+  setFeedback('good', msg + ' Solved. Compare your line with the game line below.');
+  openLines(line, score, p.type === 'mate' ? line.length : 1);
   renderList(); updateNav();
 }
 
 /* ---------------- line viewer ---------------- */
-// Step through a line of UCI moves from the puzzle position. T.line.i is the number of moves on the board.
+// Step through a line of UCI moves from the puzzle position. Two lines: the better one (engine or solver)
+// and the game line (the move played plus the engine's best answer). T.line.i is the number of moves on
+// the board. Each line keeps its own position.
 const autoplayOn = () => $('#autoplay').checked;
-function openLine(moves, at) {
+const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+function material(chess) { // White minus Black, in pawns
+  let d = 0;
+  for (const row of chess.board()) for (const q of row) if (q) d += (q.color === 'w' ? 1 : -1) * VALUE[q.type];
+  return d;
+}
+const materialWords = d => d === 0 ? 'even' : `${d > 0 ? 'White' : 'Black'} +${Math.abs(d)}`;
+function evalWords(s) { // s from White's point of view
+  if (isMate(s)) return `${fmt(s)}, ${s.mate > 0 || s.won ? 'White' : 'Black'} mates`;
+  return `${fmt(s)}, ` + (Math.abs(s.cp) < 30 ? 'about equal' : `${s.cp > 0 ? 'White' : 'Black'} is better`);
+}
+function makeLine(title, moves, score, i) {
+  const parts = pvParts(T.p.fen, moves);
+  return { title, moves: moves.slice(0, parts.length), parts, score: forWhite(score, T.p.color), i: Math.min(i, parts.length) };
+}
+function openLines(best, score, at) {
+  const p = T.p;
+  T.lines = { best: makeLine('Better', best, score, at), game: makeLine('Game', [p.played.uci, ...(p.refute || [])].slice(0, 6), p.after, 0) };
+  showLine('best');
+}
+function showLine(k) {
   T.token++; // cancels engine checks and autoplay still running for this puzzle
-  T.line = { moves, parts: pvParts(T.p.fen, moves), i: at };
-  lineGo(at);
+  T.line = T.lines[k];
+  lineGo(T.line.i);
   if (autoplayOn()) autoplay();
 }
+$('#lWhich').addEventListener('click', e => { const b = e.target.closest('button'); if (b && T.lines) showLine(b.dataset.k) });
 function lineGo(i) {
   const L = T.line, p = T.p; if (!L) return;
   i = Math.max(0, Math.min(L.moves.length, i));
@@ -709,6 +787,17 @@ async function autoplay() {
 function renderStepper() {
   const L = T.line; $('#stepper').hidden = !L; if (!L) return;
   const n = L.moves.length;
+  for (const b of $('#lWhich').children) {
+    const l = T.lines[b.dataset.k];
+    b.textContent = `${l.title}: ${l.parts.length ? l.parts[0].label : '…'}`; b.setAttribute('aria-pressed', String(l === L));
+  }
+  const ll = $('#lLine'); ll.textContent = '';
+  L.parts.forEach((x, k) => { const s = document.createElement('span'); s.textContent = x.text; if (k === L.i - 1) s.className = 'cur'; ll.append(s, ' ') });
+  const m0 = material(new Chess(T.p.fen)), m = material(T.chess);
+  $('#lSum').innerHTML = `Engine eval for this line: <b></b>. Material here: <b></b>`;
+  const [ev, mat] = $('#lSum').querySelectorAll('b');
+  ev.textContent = evalWords(L.score);
+  mat.textContent = materialWords(m) + (m === m0 ? '' : ` (start: ${materialWords(m0)})`);
   $('#lPos').textContent = L.i ? `Move ${L.i} of ${n}: ${L.parts[L.i - 1].label}` : `Start · ${n} move${n === 1 ? '' : 's'}`;
   $('#lStart').disabled = $('#lBack').disabled = L.i === 0;
   $('#lFwd').disabled = $('#lEnd').disabled = L.i === n;
@@ -750,9 +839,8 @@ function showSolution() {
   const p = T.p; if (!p) return;
   if (p.status !== 'solved' && p.status !== 'retry') p.status = 'revealed';
   T.mode = 'show';
-  const line = p.type === 'mate' ? p.pv : p.pv.slice(0, 6);
-  setFeedback('info', 'Solution', pvSan(p.fen, line));
-  openLine(line, 0);
+  setFeedback('info', 'Solution. Compare it with the game line below.');
+  openLines(p.type === 'mate' ? p.pv : p.pv.slice(0, 6), p.before, 0);
   renderList(); updateNav();
 }
 function updateNav() {
@@ -807,7 +895,7 @@ Engine.start().catch(() => { $('#err').textContent = 'Stockfish could not start 
 analyze();
 
 // Read-only hooks for the automated tests in tests/. The app does not use them.
-window.BlunderDrills = Object.freeze({ cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, studyPgn, state: S, trainer: T });
+window.BlunderDrills = Object.freeze({ cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, studyPgn, state: S, trainer: T });
 })();
 </script>
 

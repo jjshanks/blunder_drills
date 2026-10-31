@@ -44,6 +44,15 @@ test.describe('scores', () => {
   });
 });
 
+test('material counts White minus Black in pawns', async ({ page }) => {
+  const r = await run(page, D => [
+    D.material(new Chess()),
+    D.material(new Chess('4k3/8/8/8/8/8/8/3QK3 w - - 0 1')),
+    D.material(new Chess('rn2k3/8/8/8/8/8/8/4K3 w - - 0 1')),
+  ]);
+  expect(r).toEqual([0, 9, -8]);
+});
+
 test.describe('PGN input', () => {
   test('cleanPgn removes comments, variations, NAGs and move annotations', async ({ page }) => {
     const r = await run(page, D => D.cleanPgn('[White "A"]\n\n1. e4!? {best by test} e5 (1... c5 (1... e6)) 2. Nf3 $1 ; line comment\nNc6?? *'));
@@ -94,20 +103,21 @@ test.describe('detectPuzzles', () => {
   const detect = (page, scores, opts = {}) => run(page, (D, a) => {
     const g = D.parseInput('1. e4 e5 2. Nf3 Nc6 *');
     const evals = a.scores.map((s, k) => s && { score: s, best: k % 2 ? 'd7d5' : 'd2d4', pv: [] });
-    return D.detectPuzzles(g, evals, { maxMate: 2, withMistakes: false, ...a.opts })
-      .map(p => ({ ply: p.ply, type: p.type, color: p.color, mateN: p.mateN }));
+    const evals2 = evals.map((e, k) => e && { ...e, pv: [`pv${k}`] });
+    return D.detectPuzzles(g, evals2, { maxMate: 2, withMistakes: false, ...a.opts })
+      .map(p => ({ ply: p.ply, type: p.type, color: p.color, mateN: p.mateN, refute: p.refute }));
   }, { scores, opts });
 
   test('flags a blunder when the win chance drops by 0.3 or more', async ({ page }) => {
     // 1. e4 takes White from +0.3 to -3.0.
     expect(await detect(page, [{ cp: 30 }, { cp: 300 }, { cp: -300 }, { cp: 300 }, { cp: -300 }]))
-      .toEqual([{ ply: 0, type: 'blunder', color: 'w' }]);
+      .toEqual([{ ply: 0, type: 'blunder', color: 'w', refute: ['pv1'] }]);
   });
 
   test('flags a mistake (drop 0.2 to 0.3) only when mistakes are included', async ({ page }) => {
     const scores = [{ cp: 0 }, { cp: 140 }, { cp: -140 }, { cp: 140 }, { cp: -140 }];
     expect(await detect(page, scores)).toEqual([]);
-    expect(await detect(page, scores, { withMistakes: true })).toEqual([{ ply: 0, type: 'mistake', color: 'w' }]);
+    expect(await detect(page, scores, { withMistakes: true })).toEqual([{ ply: 0, type: 'mistake', color: 'w', refute: ['pv1'] }]);
   });
 
   test('ignores small drops', async ({ page }) => {
@@ -117,7 +127,7 @@ test.describe('detectPuzzles', () => {
   test('flags a missed mate within the limit', async ({ page }) => {
     // Black is already lost. White has mate in 2 before 2. Nf3, and 2. Nf3 misses it.
     expect(await detect(page, [{ cp: 0 }, { mate: -3 }, { mate: 2 }, { cp: -100 }, { cp: 100 }]))
-      .toEqual([{ ply: 2, type: 'mate', color: 'w', mateN: 2 }]);
+      .toEqual([{ ply: 2, type: 'mate', color: 'w', mateN: 2, refute: ['pv3'] }]);
   });
 
   test('does not flag a move that keeps the mate on track', async ({ page }) => {
@@ -127,8 +137,8 @@ test.describe('detectPuzzles', () => {
 
   test('a lost mate beyond the limit counts as a blunder; inside the limit as a mate', async ({ page }) => {
     const scores = [{ cp: 0 }, { mate: -5 }, { mate: 4 }, { cp: -100 }, { cp: 100 }];
-    expect(await detect(page, scores)).toEqual([{ ply: 2, type: 'blunder', color: 'w' }]);
-    expect(await detect(page, scores, { maxMate: 5 })).toEqual([{ ply: 2, type: 'mate', color: 'w', mateN: 4 }]);
+    expect(await detect(page, scores)).toEqual([{ ply: 2, type: 'blunder', color: 'w', refute: ['pv3'] }]);
+    expect(await detect(page, scores, { maxMate: 5 })).toEqual([{ ply: 2, type: 'mate', color: 'w', mateN: 4, refute: ['pv3'] }]);
   });
 
   test('skips moves whose positions are not analysed yet', async ({ page }) => {
