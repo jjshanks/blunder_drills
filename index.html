@@ -158,15 +158,15 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
   <header class="top">
     <div>
       <h1>Blunder <span>Drills</span></h1>
-      <p class="tag">Paste a game (PGN) or a single position (FEN). Stockfish runs in your browser, finds the blunders and missed mates, and turns each one into a puzzle.</p>
+      <p class="tag">Paste a game in PGN format. Stockfish runs in your browser, finds the blunders and missed mates, and turns each one into a puzzle.</p>
     </div>
     <div class="engine" id="engine"><i></i><span id="engineText">Loading Stockfish 18…</span></div>
   </header>
 
   <div class="layout">
     <section class="panel in" aria-labelledby="h-in">
-      <h2 id="h-in">Game or position</h2>
-      <textarea id="src" spellcheck="false" aria-label="PGN or FEN"></textarea>
+      <h2 id="h-in">Game</h2>
+      <textarea id="src" spellcheck="false" aria-label="Game in PGN format"></textarea>
       <div class="controls">
         <div class="field"><label class="label" for="depth">Engine depth</label>
           <select id="depth"><option value="10">Fast · 10</option><option value="14" selected>Normal · 14</option><option value="18">Deep · 18</option></select></div>
@@ -357,22 +357,13 @@ function cleanPgn(txt) {
 }
 function parseInput(raw) {
   const txt = raw.trim();
-  if (!txt) throw new Error('Paste a PGN or a FEN to analyze.');
-  const fenRe = /^([rnbqkpRNBQKP1-8]+\/){7}[rnbqkpRNBQKP1-8]+\s+[wb](\s|$)/;
-  if (fenRe.test(txt)) {
-    const parts = txt.split(/\s+/).slice(0, 6);
-    const def = ['', '', '-', '-', '0', '1'];
-    for (let i = parts.length; i < 6; i++) parts.push(def[i]);
-    const fen = parts.join(' ');
-    const v = new Chess().validate_fen(fen);
-    if (!v.valid) throw new Error('That FEN is not a legal position: ' + v.error);
-    return { headers: {}, startFen: fen, positions: [fen], moves: [] };
-  }
+  if (!txt) throw new Error('Paste a PGN to analyze.');
+  if (/^([rnbqkpRNBQKP1-8]+\/){7}[rnbqkpRNBQKP1-8]+\s+[wb](\s|$)/.test(txt)) throw new Error('That looks like a single position (FEN). Paste a whole game in PGN format.');
   const g = new Chess();
   if (!g.load_pgn(cleanPgn(txt), { sloppy: true })) throw new Error('Could not read that PGN. Check the move list for typos or illegal moves.');
   const headers = g.header();
   const hist = g.history({ verbose: true });
-  if (!hist.length) throw new Error('That PGN has no moves. Paste a FEN instead to analyze a single position.');
+  if (!hist.length) throw new Error('That PGN has no moves.');
   const startFen = headers.FEN || START;
   const r = new Chess(startFen);
   const positions = [r.fen()], moves = [];
@@ -413,7 +404,7 @@ async function analyze() {
     if (run !== S.run) return;
     const fen = game.positions[k];
     const c = new Chess(fen);
-    setProgress(k / n, game.moves.length ? `Analyzing position ${k + 1} of ${n} · depth ${depth}` : `Analyzing position · depth ${depth}`);
+    setProgress(k / n, `Analyzing position ${k + 1} of ${n} · depth ${depth}`);
     let ev;
     if (c.in_checkmate()) ev = { score: { mate: 0, lost: true }, pv: [], best: null };
     else if (c.in_stalemate() || c.insufficient_material()) ev = { score: { cp: 0 }, pv: [], best: null };
@@ -426,7 +417,7 @@ async function analyze() {
   setProgress(1, `Done · ${n} position${n > 1 ? 's' : ''} at depth ${depth} in ${secs}s`);
   const last = S.evals[n - 1];
   if (last) $('#evalNow').textContent = 'Final ' + fmt(forWhite(last.score, game.positions[n - 1].split(' ')[1]));
-  if (!S.puzzles.length && game.moves.length) setFeedback('info', 'No blunders or missed mates found with these settings. Try "Include mistakes" or a deeper search.');
+  if (!S.puzzles.length) setFeedback('info', 'No blunders or missed mates found with these settings. Try "Include mistakes" or a deeper search.');
 }
 function setProgress(f, text) { $('#barFill').style.width = (f * 100).toFixed(1) + '%'; $('#ptext').textContent = text }
 
@@ -434,13 +425,6 @@ function detectPuzzles() {
   const g = S.game, E = S.evals, out = [];
   if (!g) return out;
   const maxMate = +$('#maxMate').value, withMistakes = $('#mistakes').checked;
-  if (!g.moves.length) {
-    const e = E[0]; if (!e || !e.best) return out;
-    const turn = g.positions[0].split(' ')[1];
-    const md = mateDist(e.score);
-    out.push({ ply: 0, color: turn, fen: g.positions[0], type: md <= maxMate ? 'mate' : 'best', mateN: md <= maxMate ? md : 0, best: e.best, pv: e.pv, before: e.score, prev: null, played: null });
-    return out;
-  }
   for (let i = 0; i < g.moves.length; i++) {
     const a = E[i], b = E[i + 1];
     if (!a || !b || !a.best) continue;
@@ -471,10 +455,10 @@ function refreshPuzzles() {
 const visible = () => S.puzzles.filter(p => S.who === 'all' || p.color === S.who);
 
 /* ---------------- list + chart ---------------- */
-const TYPE_LABEL = p => p.type === 'mate' ? `Mate in ${p.mateN}` : p.type === 'blunder' ? 'Blunder' : p.type === 'mistake' ? 'Mistake' : 'Best move';
+const TYPE_LABEL = p => p.type === 'mate' ? `Mate in ${p.mateN}` : p.type === 'blunder' ? 'Blunder' : 'Mistake';
 function renderWho() {
   const el = $('#who'); el.innerHTML = '';
-  const g = S.game; el.hidden = !g || !g.moves.length;
+  el.hidden = !S.game;
   for (const [k, label] of [['all', 'Both players'], ['w', `${playerName('w')} (White)`], ['b', `${playerName('b')} (Black)`]]) {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', String(S.who === k));
     b.onclick = () => { S.who = k; renderWho(); renderList(); updateNav() }; el.appendChild(b);
@@ -486,13 +470,13 @@ function renderList() {
   const counts = { mate: 0, blunder: 0, mistake: 0 };
   vis.forEach(p => counts[p.type] = (counts[p.type] || 0) + 1);
   const solved = vis.filter(p => p.status === 'solved').length;
-  if (S.game && S.game.moves.length) {
+  if (S.game) {
     const parts = [];
     if (counts.mate) parts.push(`${counts.mate} missed mate${counts.mate > 1 ? 's' : ''}`);
     if (counts.blunder) parts.push(`${counts.blunder} blunder${counts.blunder > 1 ? 's' : ''}`);
     if (counts.mistake) parts.push(`${counts.mistake} mistake${counts.mistake > 1 ? 's' : ''}`);
     $('#summary').textContent = vis.length ? `${vis.length} puzzle${vis.length > 1 ? 's' : ''}: ${parts.join(', ')}. Solved on first try: ${solved}.` : (S.evals.filter(Boolean).length === S.evals.length ? 'Nothing to drill for this player with these settings.' : 'Puzzles appear here as the engine finds them.');
-  } else $('#summary').textContent = 'Single position: one puzzle from the engine\'s best move.';
+  } else $('#summary').textContent = 'Puzzles appear here as the engine finds them.';
   if (!vis.length) { const li = document.createElement('li'); li.innerHTML = '<p class="empty">No puzzles yet.</p>'; ul.appendChild(li) }
   for (const p of vis) {
     const idx = S.puzzles.indexOf(p);
@@ -500,10 +484,10 @@ function renderList() {
     const b = document.createElement('button'); b.className = 'pitem'; b.type = 'button';
     if (idx === S.current) b.setAttribute('aria-current', 'true');
     const st = { new: ['new', 'To do'], solved: ['solved', '✓ Solved'], retry: ['retry', 'Solved after retry'], revealed: ['revealed', 'Revealed'] }[p.status || 'new'];
-    const mv = p.played ? moveLabel(p.played) : 'Position';
+    const mv = moveLabel(p.played);
     b.innerHTML = `<span class="chip ${p.type}">${TYPE_LABEL(p)}</span><span><span class="mv"></span><span class="who"></span></span><span class="st ${st[0]}">${st[1]}</span>`;
     b.querySelector('.mv').textContent = mv;
-    b.querySelector('.who').textContent = (p.played ? 'Played by ' : '') + `${playerName(p.color)}` + (p.after ? ` · ${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))}` : '');
+    b.querySelector('.who').textContent = `Played by ${playerName(p.color)} · ${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))}`;
     b.onclick = () => { T.userTouched = true; loadPuzzle(idx) };
     li.appendChild(b); ul.appendChild(li);
   }
@@ -530,7 +514,7 @@ function drawChart() {
     if (f[1] === 'w' && +f[5] % 10 === 0) h += `<text x="${x(k)}" y="${H - 6}" text-anchor="middle">${f[5]}</text><line x1="${x(k)}" x2="${x(k)}" y1="${H - padB}" y2="${H - padB + 4}" stroke="var(--muted)"/>`;
   }
   const col = { mate: 'var(--mate)', blunder: 'var(--blunder)', mistake: 'var(--mistake)' };
-  if (g && g.moves.length) S.puzzles.forEach((p, i) => {
+  if (g) S.puzzles.forEach((p, i) => {
     if (!visible().includes(p)) return;
     const e = S.evals[p.ply + 1]; if (!e) return;
     const cx = x(p.ply + 1), cy = y(wc(forWhite(e.score, g.positions[p.ply + 1].split(' ')[1])));
@@ -557,8 +541,8 @@ function loadPuzzle(idx) {
   T.mode = 'play'; T.left = p.type === 'mate' ? p.mateN : 1; T.firstTry = true;
   $('#tchip').className = 'chip ' + p.type; $('#tchip').textContent = TYPE_LABEL(p);
   const side = sideName(p.color);
-  $('#prompt').textContent = p.type === 'mate' ? `${side} to move. Mate in ${p.mateN}.` : p.type === 'best' ? `${side} to move. Find the best move.` : `${side} to move. Find a better move.`;
-  $('#ctx').textContent = p.played ? `In the game: ${moveLabel(p.played)}  (${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))})` : `Engine eval: ${fmt(forWhite(p.before, p.color))}`;
+  $('#prompt').textContent = p.type === 'mate' ? `${side} to move. Mate in ${p.mateN}.` : `${side} to move. Find a better move.`;
+  $('#ctx').textContent = `In the game: ${moveLabel(p.played)}  (${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))})`;
   setFeedback('info', p.type === 'mate' ? 'Find the forcing line. The engine will defend for the other side.' : 'Click a piece, then click where it goes.');
   renderBoard(); renderList(); drawChart(); updateNav();
 }
@@ -724,7 +708,7 @@ function studyPgn() {
   const h = S.game.headers || {};
   return visible().map((p, i) => {
     const line = pvSan(p.fen, p.type === 'mate' ? p.pv : p.pv.slice(0, 5));
-    const ctx = p.played ? `{In the game: ${moveLabel(p.played).replace('…', '...')}} ` : '';
+    const ctx = `{In the game: ${moveLabel(p.played).replace('…', '...')}} `;
     return [`[Event "Puzzle ${i + 1}: ${TYPE_LABEL(p)} (${sideName(p.color)} to move)"]`, `[White "${h.White || '?'}"]`, `[Black "${h.Black || '?'}"]`, `[Result "*"]`, `[SetUp "1"]`, `[FEN "${p.fen}"]`, '', `${ctx}${line} *`].join('\n');
   }).join('\n\n\n');
 }
