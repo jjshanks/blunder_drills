@@ -220,7 +220,7 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
       </div>
     </section>
   </div>
-  <p class="note">Engine: Stockfish 18 (GPLv3) via stockfish.js. Pieces: Cburnett, Wikimedia Commons, CC BY-SA 3.0.</p>
+  <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, CC BY-SA 3.0.</p>
 </div>
 
 <script>
@@ -267,12 +267,33 @@ function fmt(s) { // s from White's point of view
 const mateDist = s => s.won ? 0 : (isMate(s) && s.mate > 0 ? s.mate : Infinity);
 
 /* ---------------- engine ---------------- */
+// Stockfish (GPLv3) is not part of this file. The browser downloads it from the npm package at run time.
+// A worker must come from the page's own origin, so the loader script is fetched (integrity-checked) and
+// started from a blob URL. The loader reads the address of its .wasm file from the worker URL after '#'.
+// The .wasm can only call what the loader gives it, so the loader's integrity check covers it too.
+const SF_BASE = 'https://unpkg.com/stockfish@18.0.8/bin/';
+const SF_BUILDS = [
+  { name: 'Stockfish 18', ms: 45000,
+    js: ['stockfish-18-lite-single.js', 'sha256-UkP9mydsq33+OtHUOrnq1zVo+sdkaMYUJCl3ohDEo5E='],
+    wasm: 'stockfish-18-lite-single.wasm' },
+  { name: 'Stockfish 18 (asm.js)', ms: 120000,
+    js: ['stockfish-18-asm.js', 'sha256-XDsJmMomO6qNqD0+xv8VTbRh81MeRYQOW6etKPgGQnw='] }
+];
+async function bootBuild(b) {
+  const [file, integrity] = b.js;
+  const r = await fetch(SF_BASE + file, { integrity, signal: AbortSignal.timeout(b.ms) });
+  if (!r.ok) throw new Error(file + ': HTTP ' + r.status);
+  const url = URL.createObjectURL(new Blob([await r.arrayBuffer()], { type: 'text/javascript' }));
+  try { await Engine.boot(url + (b.wasm ? '#' + encodeURIComponent(SF_BASE + b.wasm) : ''), b.ms) }
+  finally { URL.revokeObjectURL(url) }
+  Engine.name = b.name;
+}
 const Engine = {
   w: null, queue: [], cur: null, name: '',
   status(text, cls) { $('#engineText').textContent = text; $('#engine').className = 'engine ' + (cls || '') },
   start() {
-    this.ready = this.boot('stockfish.js', 45000).then(() => { this.name = 'Stockfish 18' })
-      .catch(() => { this.status('Loading compatibility engine (slower)…'); return this.boot('stockfish-asm.js', 120000).then(() => { this.name = 'Stockfish 18 (asm.js)' }) })
+    this.ready = bootBuild(SF_BUILDS[0])
+      .catch(() => { this.status('Loading compatibility engine (slower)…'); return bootBuild(SF_BUILDS[1]) })
       .then(() => { this.status(this.name + ' ready', 'ok'); this.pump() })
       .catch(e => { this.status('Engine failed to load', 'err'); throw e });
     return this.ready;
