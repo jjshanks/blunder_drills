@@ -145,3 +145,57 @@ test.describe('detectPuzzles', () => {
     expect(await detect(page, [{ cp: 30 }, null, { cp: -300 }, { cp: 300 }, null])).toEqual([]);
   });
 });
+
+test.describe('findTactics', () => {
+  // Each case: a position, a line of UCI moves from it, and the words the checker must give (or null).
+  const words = (page, fen, line) => run(page, (D, a) => { const t = D.findTactics(a.fen, a.line); return t && `${t.san} ${D.tacticWords(t)}` }, { fen, line });
+
+  test('names each core motif when the line pays it off', async ({ page }) => {
+    const cases = [
+      ['r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1', ['d5c7', 'e8d7', 'c7a8'], 'Nc7+ forks the king and the rook on a8, and wins the rook'],
+      ['4k3/7p/8/4n3/8/8/5P2/R5K1 w - - 0 1', ['a1e1', 'h7h6', 'f2f4', 'h6h5', 'f4e5'], 'Re1 pins the knight on e5 to the king, and wins the knight'],
+      ['r7/8/8/3k4/8/8/6B1/4K3 w - - 0 1', ['g2f3', 'd5c5', 'f3a8'], 'Bf3+ skewers the king and the rook on a8 behind it, and wins the rook'],
+      ['4k3/1q6/8/8/4N3/8/8/4R1K1 w - - 0 1', ['e4c5', 'e8d8', 'c5b7'], 'Nc5+ gives a discovered check from the rook on e1, while the knight attacks the queen on b7, and wins the queen'],
+      ['4k2q/8/8/8/3N4/8/1B6/4K3 w - - 0 1', ['d4f5', 'e8d7', 'b2h8'], 'Nf5 uncovers an attack by the bishop on b2 on the queen on h8, and wins the queen'],
+      ['3qkb2/3p1p2/8/8/4N3/8/8/4R1K1 w - - 0 1', ['e4d6'], 'Nd6# gives double check, which is mate'],
+      ['4k3/8/8/3n4/8/8/8/3QK3 w - - 0 1', ['d1d5'], 'Qxd5 takes the knight on d5 for free'],
+    ];
+    for (const [fen, line, want] of cases) expect(await words(page, fen, line)).toBe(want);
+  });
+
+  test('finds a tactic on a later move, for Black too', async ({ page }) => {
+    const r = await run(page, D => { const t = D.findTactics('4k3/8/8/4n3/8/8/1R3K2/8 b - - 0 1', ['e8e7', 'f2e3', 'e5c4', 'e3d4', 'c4b2']); return [t.ply, t.color, D.tacticWords(t), D.tacticHint(t)] });
+    expect(r).toEqual([2, 'b', 'forks the king and the rook on b2, and wins the rook', 'Look for a knight fork. It comes on your second move.']);
+  });
+
+  test('does not name a motif that the line does not pay off', async ({ page }) => {
+    // The king takes the forking knight.
+    expect(await words(page, 'r2k4/8/8/3N4/8/8/8/4K3 w - - 0 1', ['d5c7', 'd8c7'])).toBeNull();
+    // A defended knight is traded for a knight.
+    expect(await words(page, '4k3/8/4p3/3n4/8/8/8/3NK3 w - - 0 1', ['d1c3', 'e8e7', 'c3d5', 'e6d5'])).toBeNull();
+    // The queen takes a knight that a pawn defends.
+    expect(await words(page, '4k3/8/4p3/3n4/8/8/8/3QK3 w - - 0 1', ['d1d5', 'e6d5'])).toBeNull();
+    // A recapture is part of a trade, not a free piece: ...Bxd4 Qxd4.
+    expect(await words(page, '4k3/8/8/8/3N4/8/P7/3QK1b1 w - - 0 1', ['a2a3', 'g1d4', 'd1d4'])).toBeNull();
+  });
+
+  test('a pawn is not a fork target, even when the line then mates', async ({ page }) => {
+    // Qb3+ checks and hits the loose b7 pawn; the mate that follows comes from Qf7 and Qf8, not from a fork.
+    expect(await words(page, '6k1/1p4pp/8/8/8/8/8/3QK3 w - - 0 1', ['d1b3', 'g8h8', 'b3f7', 'b7b6', 'f7f8'])).toBeNull();
+  });
+
+  test('a later mate confirms only a motif that hits the king', async ({ page }) => {
+    // Bc3 pins the knight to the queen; the back-rank mate Re8# has nothing to do with the pin.
+    expect(await words(page, '6k1/p4ppp/5q2/8/3n4/8/4R3/4B2K w - - 0 1', ['e1c3', 'a7a6', 'e2e8'])).toBeNull();
+  });
+
+  test('tacticNotes tells the idea and what the game move allowed', async ({ page }) => {
+    // White played Qd2?? instead of Nc7+, and Black takes the queen with the knight.
+    const r = await run(page, D => {
+      const p = { fen: 'r3k3/8/8/3N4/4n3/8/8/3QK3 w - - 0 1', played: { uci: 'd1d2' }, refute: ['e4d2', 'e1d2'] };
+      return D.tacticNotes(p, ['d5c7', 'e8e7', 'c7a8']);
+    });
+    expect(r).toBe('The idea: 1. Nc7+ forks the king and the rook on a8, and wins the rook. '
+      + 'The game move, 1. Qd2, allowed 1... Nxd2, which takes the queen on d2 with a knight.');
+  });
+});

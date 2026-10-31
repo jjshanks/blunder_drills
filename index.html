@@ -159,6 +159,7 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .fb.bad { background: var(--bad-soft); border-left-color: var(--bad) }
 .fb.info { border-left-color: var(--accent) }
 .fb .line { font-family: var(--f-mono); font-size: 13px; display: block; margin-top: 4px; overflow-wrap: anywhere }
+.fb .note { display: block; margin-top: 6px }
 .copyout { width: 100%; min-height: 120px; font-family: var(--f-mono); font-size: 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); padding: 10px }
 .stepper { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px }
 .stepper .seg { justify-self: start }
@@ -571,7 +572,7 @@ function showPosition(fen, lastMove) {
 function loadPuzzle(idx) {
   const p = S.puzzles[idx]; if (!p) return;
   S.current = idx; T.p = p; T.token++;
-  T.chess = new Chess(p.fen); T.orient = p.color; T.sel = null; T.hint = null; T.pending = null; $('#promo').hidden = true; T.line = null; renderStepper();
+  T.chess = new Chess(p.fen); T.orient = p.color; T.sel = null; T.hint = null; T.hintAt = null; T.pending = null; $('#promo').hidden = true; T.line = null; renderStepper();
   T.last = p.prev ? [p.prev.from, p.prev.to] : null;
   T.mode = 'play'; T.left = p.type === 'mate' ? p.mateN : 1; T.firstTry = true;
   $('#tchip').className = 'chip ' + p.type; $('#tchip').textContent = TYPE_LABEL(p);
@@ -581,9 +582,10 @@ function loadPuzzle(idx) {
   setFeedback('info', p.type === 'mate' ? 'The arrow shows the move from the game, which missed the mate. Find the forcing line. The engine will defend for the other side.' : 'The arrow shows the move from the game. Find a better one: click a piece, then click where it goes.');
   renderBoard(); renderList(); drawChart(); updateNav();
 }
-function setFeedback(kind, text, line) {
+function setFeedback(kind, text, line, note) {
   const el = $('#fb'); el.className = 'fb ' + kind; el.textContent = text;
   if (line) { const s = document.createElement('span'); s.className = 'line'; s.textContent = line; el.appendChild(s) }
+  if (note) { const s = document.createElement('span'); s.className = 'note'; s.textContent = note; el.appendChild(s) }
 }
 function renderBoard() {
   const el = $('#board'); el.innerHTML = '';
@@ -732,7 +734,7 @@ async function userMove(m) {
 function solved(msg, line, score) {
   const p = T.p; T.mode = 'done';
   if (!p.status || p.status === 'new') p.status = T.firstTry ? 'solved' : 'retry';
-  setFeedback('good', msg + ' Solved. Compare your line with the game line below.');
+  setFeedback('good', msg + ' Solved. Compare your line with the game line below.', null, tacticNotes(p, line));
   openLines(line, score, p.type === 'mate' ? line.length : 1);
   renderList(); updateNav();
 }
@@ -835,11 +837,146 @@ function pvParts(fen, pv) {
   return parts;
 }
 const pvSan = (fen, pv) => pvParts(fen, pv).map(x => x.text).join(' ');
+
+/* ---------------- tactics ---------------- */
+// findTactics(fen, line) names the first tactic in a line of UCI moves. The attacker is the side to move at
+// fen; only its first TAC_MOVES moves can start a tactic. A motif counts only if the line pays it off within
+// TAC_PAYOFF plies: the attacker captures on a target square and keeps a gain of TAC_GAIN pawns (less for a
+// cheap hanging piece), or, for a motif that hits the king, the line gives mate. Pawns are never targets,
+// except as a hanging piece. Returns null when no motif is confirmed.
+const TAC_MOVES = 3, TAC_PAYOFF = 6, TAC_GAIN = 2;
+const worth = t => t === 'k' ? 100 : VALUE[t];
+const sqXY = s => [s.charCodeAt(0) - 97, +s[1] - 1];
+const SLIDER = { b: 1, r: 1, q: 1 };
+function playUci(c, u) { try { return c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }) } catch { return null } }
+function piecesOf(c, color) { const out = []; for (const row of c.board()) for (const q of row) if (q && q.color === color) out.push(q); return out }
+// The enemy pieces that the piece on sq attacks.
+const hitsFrom = (c, sq, me) => piecesOf(c, me === 'w' ? 'b' : 'w').filter(q => c.attackers(q.square, me).includes(sq));
+// The squares on the straight line from a to b, a and b excluded. a and b must share a rank, file or diagonal.
+function lineBetween(a, b) {
+  const [ax, ay] = sqXY(a), [bx, by] = sqXY(b), dx = Math.sign(bx - ax), dy = Math.sign(by - ay), out = [];
+  for (let x = ax + dx, y = ay + dy; x !== bx || y !== by; x += dx, y += dy) out.push(FILES[x] + (y + 1));
+  return out;
+}
+// The first piece past b on the line from a through b, or null.
+function behind(c, a, b) {
+  const [ax, ay] = sqXY(a), [bx, by] = sqXY(b), dx = Math.sign(bx - ax), dy = Math.sign(by - ay);
+  for (let x = bx + dx, y = by + dy; x >= 0 && x < 8 && y >= 0 && y < 8; x += dx, y += dy) {
+    const sq = FILES[x] + (y + 1), q = c.get(sq); if (q) return { ...q, square: sq };
+  }
+  return null;
+}
+const tgt = q => ({ type: q.type, square: q.square });
+// Candidate motifs for the attacker's move mv, best first. c is the position after mv.
+function motifsAt(c, mv, prev) { // prev: the opponent's move before mv, if any
+  const me = mv.color, foe = me === 'w' ? 'b' : 'w', type = mv.promotion || mv.piece, out = [];
+  const defended = sq => c.attackers(sq, foe).length > 0;
+  // A target worth hitting: the king, or a piece (not a pawn) worth more than the attacker or with no defender.
+  const worthHit = (q, by) => q.type === 'k' || q.type !== 'p' && (worth(q.type) > worth(by) || !defended(q.square));
+  const hits = hitsFrom(c, mv.to, me).filter(q => worthHit(q, type));
+  const castle = /[kq]/.test(mv.flags);
+  const king = piecesOf(c, foe).find(q => q.type === 'k');
+  const checkers = king ? c.attackers(king.square, me) : [];
+  // Discovered: a slider of ours whose line to a target ran through the square the piece left.
+  const disc = [];
+  if (!castle) for (const s of piecesOf(c, me)) {
+    if (!SLIDER[s.type] || s.square === mv.to) continue;
+    for (const q of hitsFrom(c, s.square, me)) if (worthHit(q, s.type) && lineBetween(s.square, q.square).includes(mv.from)) disc.push({ via: s, q });
+  }
+  const uniq = qs => [...new Map(qs.map(q => [q.square, tgt(q)])).values()];
+  if (checkers.length >= 2) out.push({ motif: 'double', targets: uniq([king, ...hits, ...disc.map(d => d.q)]) });
+  if (disc.length) {
+    const via = disc[0].via, opened = uniq(disc.filter(d => d.via.square === via.square).map(d => d.q));
+    out.push({ motif: 'discovered', via: tgt(via), opened, hit: uniq(hits), targets: uniq([...opened, ...hits]) });
+  }
+  if (hits.length >= 2) out.push({ motif: 'fork', targets: hits.map(tgt).sort((x, y) => worth(y.type) - worth(x.type)) });
+  if (SLIDER[type]) for (const x of hitsFrom(c, mv.to, me)) {
+    const y = behind(c, mv.to, x.square);
+    if (!y || y.color !== foe || y.type === 'p') continue;
+    if (worth(x.type) > worth(y.type)) out.push({ motif: 'skewer', targets: [tgt(x), tgt(y)] });
+    else if (worth(y.type) > worth(x.type) && x.type !== 'p') out.push({ motif: 'pin', targets: [tgt(x), tgt(y)] });
+  }
+  const recapture = prev && prev.captured && prev.to === mv.to; // part of a trade, not a free piece
+  if (mv.captured && !recapture && (!defended(mv.to) || worth(mv.captured) > worth(mv.piece)))
+    out.push({ motif: 'hanging', free: !defended(mv.to), targets: [{ type: mv.captured, square: mv.to }] });
+  return out;
+}
+function findTactics(fen, line) {
+  const c = new Chess(fen), me = c.turn(), sign = me === 'w' ? 1 : -1;
+  const moves = [], mat = [sign * material(c)], mate = [false], cands = [];
+  for (const u of line || []) {
+    const mv = playUci(c, u); if (!mv) break;
+    moves.push(mv); mat.push(sign * material(c)); mate.push(c.isCheckmate());
+    const k = moves.length - 1;
+    if (k % 2 === 0 && k / 2 < TAC_MOVES) cands.push(...motifsAt(c, mv, moves[k - 1]).map(m => ({ ...m, ply: k })));
+  }
+  for (const m of cands) {
+    const end = Math.min(moves.length - 1, m.ply + TAC_PAYOFF);
+    for (let j = m.ply; j <= end; j++) {
+      if (mate[j + 1] && m.targets.some(t => t.type === 'k')) return found(m, moves, { mate: j + 1 - m.ply });
+      const mv = moves[j];
+      if ((j - m.ply) % 2 || !mv.captured || !m.targets.some(t => t.type !== 'k' && t.square === mv.to)) continue;
+      const gain = mat[Math.min(j + 2, moves.length)] - mat[m.ply];
+      if (gain >= Math.min(TAC_GAIN, worth(mv.captured))) return found(m, moves, { wins: mv.captured });
+    }
+  }
+  return null;
+}
+function found(m, moves, pay) {
+  const mv = moves[m.ply];
+  return { ...m, ...pay, color: mv.color, san: mv.san, piece: mv.promotion || mv.piece, from: mv.from, to: mv.to };
+}
+// Words for a tactic t from findTactics, e.g. 'forks the king and the rook on a8, and wins the rook'.
+const pieceAt = q => q.type === 'k' ? 'the king' : `the ${PNAME[q.type]} on ${q.square}`;
+const andList = xs => xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
+function tacticWords(t) {
+  const [a, b] = t.targets;
+  const what = {
+    fork: () => `forks ${andList(t.targets.map(pieceAt))}`,
+    pin: () => `pins ${pieceAt(a)} to ${pieceAt(b)}`,
+    skewer: () => `skewers ${pieceAt(a)} and ${pieceAt(b)} behind it`,
+    discovered: () => {
+      const more = t.hit.filter(q => q.type !== 'k' && !t.opened.some(o => o.square === q.square));
+      return (t.opened.some(q => q.type === 'k') ? `gives a discovered check from ${pieceAt(t.via)}`
+        : (t.hit.some(q => q.type === 'k') ? 'gives check and ' : '') + `uncovers an attack by ${pieceAt(t.via)} on ${andList(t.opened.map(pieceAt))}`)
+        + (more.length ? `, while the ${PNAME[t.piece]} attacks ${andList(more.map(pieceAt))}` : '');
+    },
+    double: () => 'gives double check',
+    hanging: () => t.free ? `takes ${pieceAt(a)} for free` : `takes ${pieceAt(a)} with a ${PNAME[t.piece]}`,
+  }[t.motif]();
+  if (t.mate) return what + (t.mate === 1 ? ', which is mate' : ', and leads to mate');
+  return t.motif === 'hanging' ? what : `${what}, and wins the ${PNAME[t.wins]}`;
+}
+// The motif's name for a hint, e.g. 'a knight fork'. It does not give the move.
+function tacticName(t) {
+  return {
+    fork: `a ${PNAME[t.piece]} fork`, pin: 'a pin', skewer: 'a skewer', double: 'a double check',
+    discovered: (t.opened || []).some(q => q.type === 'k') ? 'a discovered check' : 'a discovered attack',
+    hanging: t.free ? 'a free capture' : 'a capture that wins material',
+  }[t.motif];
+}
+const tacticHint = t => `Look for ${tacticName(t)}.` + (t.ply ? ` It comes on your ${['first', 'second', 'third'][t.ply / 2]} move.` : '');
+// What the game move allowed, worked out once per puzzle: the opponent's tactic in the engine's answer.
+function allowedTactic(p) {
+  if (p.allowed === undefined) {
+    const c = new Chess(p.fen); playUci(c, p.played.uci);
+    const t = findTactics(c.fen(), p.refute);
+    p.allowed = t && { ...t, label: pvParts(c.fen(), p.refute)[t.ply].label };
+  }
+  return p.allowed;
+}
+// Sentences for the feedback box after a solve or a solution. line: the better line from the puzzle position.
+function tacticNotes(p, line) {
+  const out = [], t = findTactics(p.fen, line), a = allowedTactic(p);
+  if (t) out.push(`The idea: ${pvParts(p.fen, line)[t.ply].label} ${tacticWords(t)}.`);
+  if (a) out.push(`The game move, ${pvParts(p.fen, [p.played.uci])[0].label}, allowed ${a.label}, which ${tacticWords(a)}.`);
+  return out.join(' ');
+}
 function showSolution() {
   const p = T.p; if (!p) return;
   if (p.status !== 'solved' && p.status !== 'retry') p.status = 'revealed';
   T.mode = 'show';
-  setFeedback('info', 'Solution. Compare it with the game line below.');
+  setFeedback('info', 'Solution. Compare it with the game line below.', null, tacticNotes(p, p.pv));
   openLines(p.type === 'mate' ? p.pv : p.pv.slice(0, 6), p.before, 0);
   renderList(); updateNav();
 }
@@ -856,12 +993,21 @@ $('#bSol').onclick = () => { T.userTouched = true; showSolution() };
 $('#bHint').onclick = () => {
   if (!T.p || T.mode !== 'play') return;
   T.firstTry = false;
-  const b = T.chess.fen() === T.p.fen ? T.p.best : null;
-  if (b) { T.hint = b.slice(0, 2); renderBoard(); setFeedback('info', 'Hint: move the highlighted piece.'); return }
+  const p = T.p, fen = T.chess.fen();
+  if (T.hintAt && T.hintAt.fen === fen) return setFeedback('info', 'Hint: move the highlighted piece. ' + secondHint(p, fen, T.hintAt.pv));
+  const give = (best, pv) => { T.hint = best.slice(0, 2); T.hintAt = { fen, pv }; renderBoard(); setFeedback('info', 'Hint: move the highlighted piece. Press Hint again for the idea.') };
+  if (fen === p.fen && p.best) return give(p.best, p.pv);
   setFeedback('info', 'Thinking…');
   const tok = T.token;
-  Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true).then(r => { if (tok !== T.token || !r.best) return; T.hint = r.best.slice(0, 2); renderBoard(); setFeedback('info', 'Hint: move the highlighted piece.') });
+  Engine.analyse(fen, Math.max(12, S.analyzedDepth), true).then(r => { if (tok !== T.token || !r.best) return; give(r.best, r.pv) });
 };
+// The second hint names the motif of the better line. With no motif there, it names what the game move allowed.
+function secondHint(p, fen, pv) {
+  const t = findTactics(fen, pv); if (t) return tacticHint(t);
+  const a = fen === p.fen && allowedTactic(p);
+  if (a) return `The game move allowed ${tacticName(a)}. Find a move that stops it.`;
+  return p.type === 'mate' ? 'No common tactic pattern here. Look at every check.' : 'No common tactic pattern here.';
+}
 async function copyText(text, btn, ok) {
   try { await navigator.clipboard.writeText(text); const o = btn.textContent; btn.textContent = ok; setTimeout(() => btn.textContent = o, 1600); $('#copyBox').hidden = true; return true }
   catch { return false }
@@ -895,7 +1041,7 @@ Engine.start().catch(() => { $('#err').textContent = 'Stockfish could not start 
 analyze();
 
 // Read-only hooks for the automated tests in tests/. The app does not use them.
-window.BlunderDrills = Object.freeze({ cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, studyPgn, state: S, trainer: T, Chess });
+window.BlunderDrills = Object.freeze({ cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, findTactics, tacticWords, tacticHint, tacticNotes, studyPgn, state: S, trainer: T, Chess });
 </script>
 
 </body>

@@ -3,6 +3,9 @@
 Paste a chess game in PGN format. Stockfish runs in your browser, finds the
 blunders and missed mates, and turns each one into a puzzle.
 
+When a fork, pin, skewer, discovered attack, double check or free piece was
+missed or allowed, the app names it in the second hint and after the solution.
+
 The whole app is one file, `index.html`. There is no build step.
 
 ## Run

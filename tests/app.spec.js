@@ -181,6 +181,29 @@ test('Show solution marks the puzzle as revealed and opens the line at its start
   await expect(page.locator('#stepper')).toBeHidden();
 });
 
+test('the second hint names the tactic, and the solution explains it', async ({ page }) => {
+  await openAnalyzed(page);
+  await page.locator('.pitem .mv', { hasText: '14… Nxa4' }).click();
+  const p = await current(page);
+  await page.locator('#bHint').click();
+  await expect(page.locator('#fb')).toHaveText('Hint: move the highlighted piece. Press Hint again for the idea.');
+  await expect(page.locator(`.sq.hint[data-sq="${p.best.slice(0, 2)}"]`)).toHaveCount(1);
+  await page.locator('#bHint').click();
+  await expect(page.locator('#fb')).toHaveText('Hint: move the highlighted piece. Look for a discovered attack.');
+  await page.locator('#bSol').click();
+  await expect(page.locator('#fb .note')).toHaveText('The idea: 14... Nd3+ gives check and uncovers an attack by the bishop on e7 on the queen on b4, and wins the queen.');
+});
+
+test('the second hint names what the game move allowed when the better move is not a tactic', async ({ page }) => {
+  await openAnalyzed(page);
+  await page.locator('.pitem .mv', { hasText: '17. Qa6' }).click();
+  await page.locator('#bHint').click();
+  await page.locator('#bHint').click();
+  await expect(page.locator('#fb')).toHaveText('Hint: move the highlighted piece. The game move allowed a free capture. Find a move that stops it.');
+  await page.locator('#bSol').click();
+  await expect(page.locator('#fb .note')).toHaveText('The game move, 17. Qa6, allowed 17... Qxa6, which takes the queen on a6 for free.');
+});
+
 test('filters puzzles by player', async ({ page }) => {
   await openAnalyzed(page);
   await page.getByRole('button', { name: 'Alex Sample (White)' }).click();
