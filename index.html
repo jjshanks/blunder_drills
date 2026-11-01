@@ -90,6 +90,8 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .btn.primary:hover:not(:disabled) { filter: brightness(1.08) }
 .btn.util { padding: 4px 9px; font-size: 13px; color: var(--muted); background: transparent; border-color: transparent; white-space: nowrap } /* a quiet utility action */
 .btn.util:hover:not(:disabled) { color: var(--ink) }
+.btn.quiet { background: transparent; border-color: transparent; padding-inline: 10px } /* help that is there, but does not call for a click */
+.btn.quiet:hover:not(:disabled) { background: var(--soft); border-color: transparent }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
 .err { color: var(--bad); font-size: 14px; margin: 0 }
 
@@ -252,9 +254,9 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       <div class="promo" id="promo" hidden><span class="label">Promote to</span></div>
       <div class="actions">
         <div class="row" role="group" aria-label="Help with this puzzle">
-          <button class="btn" id="bHint">Hint</button>
-          <button class="btn" id="bSol">Show solution</button>
-          <button class="btn" id="bRetry">Retry</button>
+          <button class="btn quiet" id="bHint">Hint</button>
+          <button class="btn quiet" id="bSol">Show solution</button>
+          <button class="btn" id="bRetry" hidden>Retry</button>
         </div>
         <div class="pager" role="group" aria-label="Puzzles">
           <button class="btn" id="bPrev">← Prev</button>
@@ -662,7 +664,7 @@ function loadPuzzle(idx) {
   S.current = idx; T.p = p; T.token++;
   T.chess = new Chess(p.fen); T.orient = p.color; T.sel = null; T.hint = null; T.hintAt = null; T.pending = null; $('#promo').hidden = true; T.line = null; T.lines = null; renderStepper();
   T.last = p.prev ? [p.prev.from, p.prev.to] : null;
-  T.mode = 'play'; T.left = p.type === 'mate' ? p.mateN : 1; T.firstTry = true;
+  T.mode = 'play'; T.left = p.type === 'mate' ? p.mateN : 1; T.firstTry = true; T.tried = false;
   const side = sideName(p.color);
   $('#prompt').textContent = p.type === 'mate' ? `${side} to move. Mate in ${p.mateN}.` : `${side} to move. Improve on ${p.played.san}.`;
   const ctx = $('#ctx'), mv = document.createElement('span'); mv.className = 'mv'; mv.textContent = moveLabel(p.played);
@@ -824,7 +826,7 @@ function playUci(c, u) { try { return c.move({ from: u.slice(0, 2), to: u.slice(
 async function userMove(m) {
   const p = T.p, tok = T.token;
   const mv = T.chess.move({ from: m.from, to: m.to, promotion: m.promotion });
-  T.sel = null; T.hint = null; T.last = [mv.from, mv.to]; T.anim = T.last; T.mode = 'wait'; renderBoard();
+  T.sel = null; T.hint = null; T.last = [mv.from, mv.to]; T.anim = T.last; T.mode = 'wait'; T.tried = true; $('#bRetry').hidden = false; renderBoard();
   if (p.type === 'mate') {
     if (T.chess.isCheckmate()) return solved(`Found it: ${mv.san}. That is checkmate.`, T.chess.history({ verbose: true }).map(uciOf), p.before);
     setFeedback('info', 'Checking your move…');
@@ -1132,7 +1134,7 @@ function updateNav() {
   const vis = visible(); const vi = T.p ? vis.indexOf(T.p) : -1; const has = !!T.p;
   $('#tcount').textContent = vi >= 0 ? `Puzzle ${vi + 1} of ${vis.length}` : '';
   $('#bPrev').disabled = vi <= 0; $('#bNext').disabled = !vis.length || vi === vis.length - 1;
-  $('#bHint').disabled = !has || T.mode !== 'play'; $('#bSol').disabled = !has; $('#bRetry').disabled = !has; $('#bFen').disabled = !T.chess;
+  $('#bHint').disabled = !has || T.mode !== 'play'; $('#bSol').disabled = !has; $('#bRetry').hidden = !has || !(T.tried || T.mode === 'done' || T.mode === 'show'); $('#bFen').disabled = !T.chess;
   $('#bNext').classList.toggle('primary', T.mode === 'done' || T.mode === 'show'); // while you play, the board is the main action
 }
 // The trainer is sticky. When it is taller than the window, a negative top lets its bottom (the line and its buttons) come into view.

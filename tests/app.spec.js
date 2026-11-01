@@ -39,7 +39,7 @@ test('analyzes the sample game into the expected puzzles', async ({ page }) => {
   await expect(page.locator('#summary')).toHaveText(/^6 puzzles: 1 missed mate, 5 blunders\./);
   await expect(page.locator('.pitem .mv')).toHaveText(SAMPLE_PUZZLES);
   await expect(page.locator('.pitem .kind.mate')).toHaveText(['Missed mate in 2']);
-  await expect(page.locator('.pitem .kind')).toHaveText(['?? (blunder)', 'Missed mate in 2', '?? (blunder)', '?? (blunder)', '?? (blunder)', '?? (blunder)']);
+  await expect(page.locator('.pitem .kind')).toHaveText(['?? (blunder)', '?? (blunder)', '?? (blunder)', 'Missed mate in 2', '?? (blunder)', '?? (blunder)']);
   await expect(page.locator('#chart .mk')).toHaveCount(6);
   await expect(page.locator('#tcount')).toHaveText('Puzzle 1 of 6');
   await expect(page.locator('#prog .bar')).toBeHidden(); // a complete analysis keeps only its line of text
@@ -124,8 +124,10 @@ test('remembers autoplay and then plays the line after a solve', async ({ page }
 test('rejects the game move, resets the board, then counts a later solve as a retry', async ({ page }) => {
   await openAnalyzed(page);
   const p = await current(page);
+  await expect(page.locator('#bRetry')).toBeHidden(); // nothing to retry before a move
   await play(page, p.played);
   await expect(page.locator('#fb')).toHaveClass(/bad/);
+  await expect(page.locator('#bRetry')).toBeVisible();
   await expect(page.locator('#fb')).toContainText('that is the move from the game.');
   await page.waitForFunction(fen => {
     const t = window.BlunderDrills.trainer;
