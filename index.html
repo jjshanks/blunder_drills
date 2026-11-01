@@ -18,9 +18,10 @@
 <style>
 /* Layout: two-column workbench — header, game, eval graph and puzzle list on the left; a sticky training board on the right,
    from the top of the page, sized so that the board and its actions fit in a short window. Stacks on phones, board after the game. */
-/* Colors: navy and gold (#00296b #003f88 #00509d #fdc500 #ffd500). Gold marks the last move. Category and result colors are separate. */
+/* Colors: a navy and gold board (#00296b #003f88 #00509d #fdc500 #ffd500) on warm neutrals. Gold marks the last move.
+   Blue is for actions and links only. Category and result colors are separate. --soft is only for ink text. */
 :root {
-  --bg: #eef2f7; --surface: #fbfcfe; --ink: #0d1b33; --muted: #4e5d74; --line: #d4dce8;
+  --bg: #f7f5f1; --surface: #fdfcfa; --ink: #1d1c1a; --muted: #5c5850; --line: #e0dcd3; --soft: #eeeae3;
   --accent: #00509d; --accent-ink: #ffffff; --accent-soft: #dce7f4;
   --sq-l: #eef1f6; --sq-d: #7593c0; --frame: #00296b; --frame-ink: #b8c8e4;
   --hl-last: rgba(253, 197, 0, .6); --hl-sel: rgba(0, 80, 157, .45); --dot: rgba(0, 41, 107, .32); --hint: #ffd500;
@@ -30,11 +31,11 @@
   --f-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --r: 10px;
+  --r: 6px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) { :root {
-  --bg: #0a1424; --surface: #111d31; --ink: #e6ecf5; --muted: #9aa8bd; --line: #24324a;
+  --bg: #151413; --surface: #1d1c1a; --ink: #ecebe7; --muted: #a8a49b; --line: #33312d; --soft: #2b2926;
   --accent: #6ea8e8; --accent-ink: #06152b; --accent-soft: #1a2f50;
   --sq-l: #c9d4e6; --sq-d: #5d7aa8; --frame: #050c18; --frame-ink: #8fa6c9;
   --hl-last: rgba(253, 197, 0, .5); --hl-sel: rgba(110, 168, 232, .5); --dot: rgba(0, 15, 40, .4);
@@ -68,15 +69,21 @@ header.top { grid-area: head }
 .panel h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; margin: 0; letter-spacing: -.005em }
 .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600 }
 .in { grid-area: input } .chartp { grid-area: chart } .listp { grid-area: list }
+/* No cards in the left column: a line divides the sections. */
+.in, .chartp, .listp { background: none; border: 0; border-radius: 0; padding: 20px 0 0; border-top: 1px solid var(--line) }
+/* TRIAL B: the trainer has no card either. On a phone, a line divides it like the other sections. */
+:root[data-cards="b"] .trainer { background: none; border: 0; padding: 0 }
+@media (max-width: 920px) { :root[data-cards="b"] .trainer { padding-top: 20px; border-top: 1px solid var(--line); border-radius: 0 } }
+.trial { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px } /* TRIAL: remove after the choice */
 .trainer { grid-area: trainer; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px) } /* script: a negative top when the panel is taller than the window */
 @media (max-width: 920px) { .trainer { position: static } }
 
-textarea#src { width: 100%; min-height: 150px; resize: vertical; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.55; padding: 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg) }
+textarea#src { width: 100%; min-height: 150px; resize: vertical; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.55; padding: 12px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface) }
 .controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: end }
 .field { display: grid; gap: 4px }
-select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface) }
+select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); background: var(--surface) }
 .check { display: flex; align-items: center; gap: 8px; font-size: 14px; padding-bottom: 7px; cursor: pointer }
-.btn { border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 14px; display: inline-flex; align-items: center; gap: 6px }
+.btn { border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: var(--r); cursor: pointer; font-weight: 500; font-size: 14px; display: inline-flex; align-items: center; gap: 6px }
 .btn:hover:not(:disabled) { border-color: var(--accent) }
 .btn:disabled { opacity: .45; cursor: default }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600 }
@@ -113,14 +120,14 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .legend b { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0 }
 
 .summary { color: var(--muted); font-size: 14px; margin: 0 }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex-wrap: wrap }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; flex-wrap: wrap }
 .seg button { border: 0; background: transparent; padding: 6px 12px; font-size: 13.5px; cursor: pointer; border-right: 1px solid var(--line) }
 .seg button:last-child { border-right: 0 }
-.seg button[aria-pressed="true"] { background: var(--accent-soft); font-weight: 600 }
-.plist { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0 }
-.pitem { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; text-align: left; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); cursor: pointer }
-.pitem:hover { border-color: var(--accent) }
-.pitem[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent) }
+.seg button[aria-pressed="true"] { background: var(--soft); font-weight: 600 }
+.plist { display: grid; list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line) } /* rows, not cards */
+.pitem { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; text-align: left; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent; cursor: pointer }
+.pitem:hover { background: var(--surface) }
+.pitem[aria-current="true"] { background: var(--surface); box-shadow: inset 3px 0 0 var(--ink) } /* the puzzle on the board */
 .pitem .mv { font-family: var(--f-mono); font-size: 13.5px; font-variant-numeric: tabular-nums }
 /* The kind of error: chess notation (?? a blunder, ? a mistake), or words for a missed mate. */
 .kind { font-weight: 700; margin-left: 1px }
@@ -130,7 +137,7 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 @media (max-width: 520px) { .pitem .who { white-space: normal } } /* wrap: keep the eval change in view */
 .st { font-size: 12px; font-weight: 600; white-space: nowrap }
 .st.solved { color: var(--good) } .st.retry { color: var(--mistake) } .st.revealed { color: var(--bad) } .st.new { color: var(--muted); font-weight: 400 }
-.empty { color: var(--muted); font-size: 14px; margin: 0; padding: 14px; border: 1px dashed var(--line); border-radius: 8px }
+.empty { color: var(--muted); font-size: 14px; margin: 0; padding: 14px; border: 1px dashed var(--line); border-radius: var(--r) }
 
 .thead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap }
 /* Trainer head: the task first, then the puzzle type and the game move as context. */
@@ -143,15 +150,15 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .ctx .mv { font-family: var(--f-mono); font-size: 13.5px; color: var(--ink) }
 .actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center }
 .pager { display: inline-flex; margin-left: auto } /* on its own line, it stays at the right */
-.pager .btn:first-child { border-radius: 8px 0 0 8px }
-.pager .btn + .btn { border-radius: 0 8px 8px 0; margin-left: -1px }
+.pager .btn:first-child { border-radius: var(--r) 0 0 var(--r) }
+.pager .btn + .btn { border-radius: 0 var(--r) var(--r) 0; margin-left: -1px }
 .pager .btn:focus-visible { position: relative; z-index: 1 }
 /* The board fits the window height with the head and the actions (--chrome: the height of all of them but the board).
    The rest of the trainer keeps the board's width, so that the actions stay below the board in a wide, short window. */
 .trainer { --chrome: 210px; --bw: max(320px, calc(100svh - var(--chrome))) }
 .trainer > * { width: 100%; max-width: var(--bw); justify-self: center }
 
-.bframe { display: grid; grid-template-columns: 4.2cqi minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 4.2cqi; width: 100%; max-width: 100%; padding: 1.6cqi 1.6cqi 0 0; background: var(--frame); border-radius: 12px; box-shadow: 0 18px 40px -24px rgba(0,0,0,.6) }
+.bframe { display: grid; grid-template-columns: 4.2cqi minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 4.2cqi; width: 100%; max-width: 100%; padding: 1.6cqi 1.6cqi 0 0; background: var(--frame); border-radius: var(--r); box-shadow: 0 18px 40px -24px rgba(0,0,0,.6) }
 .bwrap { container-type: inline-size; width: 100% }
 .ranks, .files { display: grid; font-family: var(--f-mono); font-size: 2.4cqi; font-weight: 500; color: var(--frame-ink); user-select: none; -webkit-user-select: none }
 .ranks { grid-template-rows: repeat(8, 1fr); place-items: center }
@@ -181,7 +188,7 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 @media (prefers-reduced-motion: reduce) { .bframe.shake { animation: none } .bar > div { transition: none } }
 
 .promo { display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
-.promo button { padding: 4px; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); cursor: pointer }
+.promo button { padding: 4px; width: 52px; height: 52px; display: grid; place-items: center; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface); cursor: pointer }
 /* The status line: no box. A result starts with a colored mark; the words say the same, so the color is not the only signal. */
 .fb { font-size: 15px; min-height: 45px; text-wrap: pretty }
 .fb.good::before, .fb.bad::before { font-weight: 700; margin-right: 6px; content: "✓"; content: "✓" / "" }
@@ -190,7 +197,7 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .fb .line { font-family: var(--f-mono); font-size: 14px; display: block; margin-top: 4px; overflow-wrap: anywhere }
 .fb .note { display: block; margin-top: 6px; font-size: inherit; color: inherit } /* the explanation: body text, not the fine-print .note */
 .fb .mvlink { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer }
-.copyout { width: 100%; min-height: 120px; font-family: var(--f-mono); font-size: 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); padding: 10px }
+.copyout { width: 100%; min-height: 120px; font-family: var(--f-mono); font-size: 12px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface); padding: 10px }
 .stepper { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line) } /* a divider, not another box */
 .stepper .seg { justify-self: start }
 .lline { margin: 0; font-family: var(--f-mono); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere }
@@ -213,6 +220,7 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
         <p class="tag">Paste a game. Get back the moves you’d rather forget, as puzzles.</p>
       </div>
       <div class="engine" id="engine"><i></i><span id="engineText">Loading Stockfish 18…</span></div>
+      <label class="trial">Cards (trial) <select id="cardsTrial"><option value="a">A: left column flat</option><option value="b">B: all flat, board framed</option></select></label>
     </header>
 
     <section class="panel in" aria-labelledby="h-in">
@@ -1175,6 +1183,9 @@ $('#copyAll').onclick = async () => {
 };
 
 /* ---------------- wiring ---------------- */
+// TRIAL: compare two card styles. ?cards=b in the address opens B. Remove after the choice.
+{ const sel = $('#cardsTrial'), set = v => { document.documentElement.dataset.cards = v; sel.value = v };
+  set(new URLSearchParams(location.search).get('cards') === 'b' ? 'b' : 'a'); sel.onchange = () => set(sel.value) }
 $('#run').onclick = analyze;
 $('#sample').onclick = () => { $('#src').value = SAMPLE; analyze() };
 $('#maxMate').onchange = () => { refreshPuzzles(); drawChart() };
