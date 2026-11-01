@@ -1,0 +1,20 @@
+<!doctype html><meta charset=utf-8><title>slm bench</title>
+<script type="module">
+import { pipeline, TextStreamer, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2';
+window.ready = true;
+window.run = async ({ model, dtype, threads, messages, maxNew }) => {
+  if (threads) env.backends.onnx.wasm.numThreads = threads;
+  const t0 = performance.now();
+  const gen = await pipeline('text-generation', model, { dtype, device: 'wasm' });
+  const tLoad = performance.now();
+  let first = 0, n = 0, text = '';
+  const streamer = new TextStreamer(gen.tokenizer, { skip_prompt: true, skip_special_tokens: true,
+    callback_function: s => { text += s; }, token_callback_function: () => { n++; if (!first) first = performance.now(); } });
+  const tGen = performance.now();
+  const promptIds = gen.tokenizer.apply_chat_template(messages, { add_generation_prompt: true, tokenize: true, return_tensor: false });
+  await gen(messages, { max_new_tokens: maxNew, do_sample: false, streamer });
+  const tEnd = performance.now();
+  return { isolated: self.crossOriginIsolated, threads: env.backends.onnx.wasm.numThreads, promptTokens: promptIds.length,
+    loadS: (tLoad - t0) / 1000, prefillS: (first - tGen) / 1000, newTokens: n, decodeTps: (n - 1) / ((tEnd - first) / 1000), text };
+};
+</script>

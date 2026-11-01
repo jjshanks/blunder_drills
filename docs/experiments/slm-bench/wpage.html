@@ -1,0 +1,18 @@
+<!doctype html><meta charset=utf-8><title>wllama bench</title>
+<script type="module">
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.8.1/esm/index.js';
+window.ready = true;
+window.run = async ({ repo, file, threads, gpu, messages, maxNew, schema }) => {
+  const w = new Wllama({ default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.8.1/esm/wasm/wllama.wasm' });
+  const t0 = performance.now();
+  await w.loadModelFromHF({ repo, file }, { n_ctx: 2048, n_threads: threads || undefined, n_gpu_layers: gpu ? 99 : 0 });
+  const tLoad = performance.now();
+  const opts = { messages, max_tokens: maxNew, temperature: 0 };
+  if (schema) opts.response_format = { type: 'json_schema', json_schema: { name: 'review', schema } };
+  const r = await w.createChatCompletion(opts);
+  const t = r.timings || {};
+  return { isolated: self.crossOriginIsolated, threads: threads, loadS: (tLoad - t0) / 1000,
+    promptTokens: t.prompt_n, prefillS: t.prompt_ms / 1000, prefillTps: t.prompt_per_second,
+    newTokens: t.predicted_n, decodeTps: t.predicted_per_second, text: r.choices?.[0]?.message?.content };
+};
+</script>
