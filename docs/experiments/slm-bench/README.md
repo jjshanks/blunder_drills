@@ -1,6 +1,6 @@
 # Browser SLM benchmark
 
-This harness measures how fast a small language model runs in Chromium on the CPU (WASM). It also shows the raw output of the model for one coaching prompt. The results are in `docs/coach-slm-feasibility.md`.
+This harness measures how fast a small language model runs in Chromium on the CPU (WASM). It also shows the raw output of the model for one coaching prompt. The results are in Appendix A of `docs/review-coach-plan.md`.
 
 - `prompt.json`: the test prompt. It is the 18...Rfb8 moment from a real game review, written as a fact card (524 Qwen3 tokens).
 - `page.html` + `bench.mjs`: Transformers.js 4.3.2 (ONNX Runtime Web, WASM).
