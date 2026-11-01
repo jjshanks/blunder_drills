@@ -258,9 +258,9 @@ test('after a solution, the whole game opens at the puzzle position', async ({ p
 
 test('filters puzzles by player', async ({ page }) => {
   await openAnalyzed(page);
-  await page.getByRole('button', { name: 'Alex Sample (White)' }).click();
+  await page.getByRole('button', { name: 'Martin Reyes (White)' }).click();
   await expect(page.locator('.pitem .mv')).toHaveText(['29. Rd2', '33. d5']);
-  await page.getByRole('button', { name: 'Sam Example (Black)' }).click();
+  await page.getByRole('button', { name: 'Priya Nair (Black)' }).click();
   await expect(page.locator('.pitem .mv')).toHaveText(['20… Rb8', '32… Kf8', '36… Rd7', '41… Rh5']);
 });
 
@@ -275,7 +275,7 @@ test('exports one valid Lichess study chapter per puzzle', async ({ page }) => {
 
 test('analyzes a pasted game that ends in checkmate and remembers it after reload', async ({ page }) => {
   await openAnalyzed(page);
-  await expect(page.locator('#gsum')).toHaveText('Alex Sample vs Sam Example · 1-0 · 44 moves');
+  await expect(page.locator('#gsum')).toHaveText('Martin Reyes vs Priya Nair · 1-0 · 44 moves');
   await expect(page.locator('#src')).toBeHidden(); // the PGN folds away while you train
   await page.locator('#setup summary').click();
   await page.locator('#src').fill('1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0');

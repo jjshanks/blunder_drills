@@ -305,10 +305,10 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 function pieceEl(color, type) { const s = document.createElementNS(SVGNS, 'svg'); s.setAttribute('viewBox', '0 0 40 40'); s.setAttribute('class', 'pc'); const u = document.createElementNS(SVGNS, 'use'); u.setAttribute('href', '#pc-' + color + type); s.appendChild(u); return s }
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const SAMPLE = `[Event "Club Rapid"]
-[Site "Example Chess Club"]
+[Site "Riverside Chess Club"]
 [Date "2026.10.31"]
-[White "Alex Sample"]
-[Black "Sam Example"]
+[White "Martin Reyes"]
+[Black "Priya Nair"]
 [Result "1-0"]
 
 1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 exd4 6. cxd4 Bb4+ 7. Bd2 Bxd2+ 8. Nbxd2 d5 9. exd5 Nxd5 10. Qb3 Nce7 11. O-O O-O 12. Rfe1 c6 13. h3 Qb6 14. Qa3 Ng6 15. Rad1 a5 16. Nb3 Qd8 17. Bxd5 cxd5 18. Nc1 b6 19. Qb3 Ba6 20. Ne5 Rb8 21. Nc6 Qf6 22. Nxb8 Rxb8 23. Ne2 h5 24. Nc3 Rd8 25. Nxd5 Qg5 26. Nc7 Nf4 27. Qf3 Bc8 28. Qg3 Qh6 29. Rd2 Nxh3+ 30. gxh3 Qxd2 31. Qe3 Qb4 32. b3 Kf8 33. d5 Kg8 34. Kh2 h4 35. Qe7 Qf4+ 36. Kg1 Rd7 37. Qf8+ Kh7 38. Ne6 Qf6 39. Qxc8 Rxd5 40. Nf8+ Kh6 41. Ne6 Rh5 42. Qh8+ Kg6 43. Nf8+ Kf5 44. Qxh5+ 1-0`;
@@ -504,7 +504,7 @@ async function analyze() {
   if (last) $('#evalNow').textContent = 'Final ' + fmt(forWhite(last.score, game.positions[n - 1].split(' ')[1]));
   if (!S.puzzles.length) setFeedback('info', 'No blunders or missed mates found with these settings. Try "Include mistakes" or a deeper search.');
 }
-// One line for the loaded game, for example "Alex Sample vs Sam Example · 1-0 · 44 moves".
+// One line for the loaded game, for example "Martin Reyes vs Priya Nair · 1-0 · 44 moves".
 function renderGameSummary() {
   const g = S.game, el = $('#gsum'); el.hidden = !g; if (!g) return;
   const r = g.headers.Result, n = Math.ceil(g.moves.length / 2), rest = document.createElement('span');

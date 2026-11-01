@@ -76,7 +76,7 @@ test.describe('PGN input', () => {
     });
     expect(r.moves).toBe(87);
     expect(r.positions).toBe(88);
-    expect(r.white).toBe('Alex Sample');
+    expect(r.white).toBe('Martin Reyes');
     expect(r.first).toEqual({ san: 'e4', from: 'e2', to: 'e4', uci: 'e2e4', color: 'w', moveNo: 1 });
     expect(r.second).toMatchObject({ san: 'e5', color: 'b', moveNo: 1 });
   });
