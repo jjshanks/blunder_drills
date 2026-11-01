@@ -5,3 +5,4 @@ node_modules/
 test-results/
 playwright-report/
 docs/experiments/slm-bench/profile/
+.claude/
