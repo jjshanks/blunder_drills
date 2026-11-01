@@ -197,6 +197,22 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .stepper .btn { min-width: 40px; justify-content: center; font-size: 17px; line-height: 1; padding: 7px 10px }
 .stepauto { margin-left: auto; padding-bottom: 0 }
 .note { font-size: 13px; color: var(--muted); margin: 0; text-wrap: pretty }
+/* TRIAL: light-mode palettes 1-6, chosen with the picker at the bottom right or ?palette=N. Remove the ones not chosen. */
+@media (prefers-color-scheme: light) {
+:root[data-palette="1"] { /* Navy & gold */
+  --bg: #eef2f7; --surface: #fbfcfe; --ink: #0d1b33; --muted: #4e5d74; --line: #d4dce8; --accent: #00509d; --accent-ink: #ffffff; --accent-soft: #dce7f4; --sq-l: #eef1f6; --sq-d: #7593c0; --frame: #00296b; --frame-ink: #b8c8e4; --hl-last: rgba(253, 197, 0, .6); --hl-sel: rgba(0, 80, 157, .45); --dot: rgba(0, 41, 107, .32); --adv-w: #f7f9fc; --adv-b: #00296b }
+:root[data-palette="2"] { /* Ocean & amber */
+  --bg: #edf6fa; --surface: #fbfdfe; --ink: #06263a; --muted: #48606e; --line: #cfe2ea; --accent: #1b7f99; --accent-ink: #ffffff; --accent-soft: #d7eef6; --sq-l: #e8f4f9; --sq-d: #6fb3cf; --frame: #023047; --frame-ink: #8ecae6; --hl-last: rgba(255, 183, 3, .55); --hl-sel: rgba(33, 158, 188, .5); --dot: rgba(2, 48, 71, .3); --adv-w: #f4fafc; --adv-b: #023047 }
+:root[data-palette="3"] { /* Cream, navy & red */
+  --bg: #fdf0d5; --surface: #fffaf0; --ink: #1b1f24; --muted: #5e5a52; --line: #eadcc0; --accent: #003049; --accent-ink: #fdf0d5; --accent-soft: #dde6ec; --sq-l: #fbeccb; --sq-d: #669bbc; --frame: #780000; --frame-ink: #f3d9b8; --hl-last: rgba(193, 18, 31, .32); --hl-sel: rgba(0, 48, 73, .45); --dot: rgba(0, 48, 73, .32); --adv-w: #fffaf0; --adv-b: #003049 }
+:root[data-palette="4"] { /* Deep sea & sand */
+  --bg: #f3eee5; --surface: #fcfaf6; --ink: #0b1a2e; --muted: #555c63; --line: #e2d9c9; --accent: #04395e; --accent-ink: #ffffff; --accent-soft: #dde7ee; --sq-l: #efe3cc; --sq-d: #70a288; --frame: #031d44; --frame-ink: #dab785; --hl-last: rgba(213, 137, 111, .6); --hl-sel: rgba(4, 57, 94, .4); --dot: rgba(3, 29, 68, .3); --adv-w: #f8f4ec; --adv-b: #031d44 }
+:root[data-palette="5"] { /* Cerulean */
+  --bg: #eef6f9; --surface: #ffffff; --ink: #00171f; --muted: #4a5f68; --line: #d3e4eb; --accent: #007ea7; --accent-ink: #ffffff; --accent-soft: #d9eff7; --sq-l: #e9f5fa; --sq-d: #5aa7c9; --frame: #00171f; --frame-ink: #7fc6e4; --hl-last: rgba(255, 213, 0, .5); --hl-sel: rgba(0, 52, 89, .45); --dot: rgba(0, 23, 31, .3); --adv-w: #f5fafc; --adv-b: #003459 }
+:root[data-palette="6"] { /* Teal, khaki & amber */
+  --bg: #f3f2e8; --surface: #fcfcf7; --ink: #0a1f33; --muted: #4f5b5f; --line: #dcdcc8; --accent: #005377; --accent-ink: #ffffff; --accent-soft: #d5ece5; --sq-l: #efe9c9; --sq-d: #5aa38c; --frame: #052f5f; --frame-ink: #d5c67a; --hl-last: rgba(241, 162, 8, .55); --hl-sel: rgba(6, 167, 125, .5); --dot: rgba(5, 47, 95, .3); --adv-w: #f8f8f0; --adv-b: #052f5f }
+}
+.palpick { position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 60; display: flex; gap: 8px; align-items: center; font-size: 13px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: 0 6px 20px -10px rgba(0,0,0,.4) }
 </style>
 </head>
 <body>
@@ -293,6 +309,8 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
     </section>
   </div>
   <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, CC BY-SA 3.0.</p>
+  <!-- TRIAL: palette picker. Remove with the palettes after a choice. -->
+  <label class="palpick">Palette (light mode) <select id="palette"><option value="">Current · sage</option><option value="1">1 · Navy &amp; gold</option><option value="2">2 · Ocean &amp; amber</option><option value="3">3 · Cream, navy &amp; red</option><option value="4">4 · Deep sea &amp; sand</option><option value="5">5 · Cerulean</option><option value="6">6 · Teal, khaki &amp; amber</option></select></label>
 </div>
 
 <script type="module">
@@ -1168,6 +1186,10 @@ $('#sample').onclick = () => { $('#src').value = SAMPLE; analyze() };
 $('#maxMate').onchange = () => { refreshPuzzles(); drawChart() };
 $('#mistakes').onchange = () => { refreshPuzzles(); drawChart() };
 $('#src').value = store.get('drills.src') || SAMPLE;
+// TRIAL: palette picker (?palette=N or the picker). Remove with the palettes after a choice.
+function setPalette(v) { if (v) document.documentElement.dataset.palette = v; else delete document.documentElement.dataset.palette; $('#palette').value = v; store.set('drills.palette', v) }
+$('#palette').onchange = e => setPalette(e.target.value);
+setPalette(new URLSearchParams(location.search).get('palette') ?? store.get('drills.palette') ?? '');
 showPosition(START, null);
 drawChart();
 Engine.start().catch(() => { $('#err').textContent = 'Stockfish could not start in this browser. Try a current Chrome, Edge, Firefox or Safari.'; $('#err').hidden = false });
