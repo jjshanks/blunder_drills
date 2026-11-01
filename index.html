@@ -16,7 +16,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <script type="importmap">{ "integrity": { "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js": "sha384-A9KE46F70Ao1BUdhGSxgP0+9OhPjBrpf6gsBehqG12SbeKbFWnO7bwtNT68I4xKh" } }</script>
 <style>
-/* Layout: two-column workbench — game input, eval graph and puzzle list on the left; a sticky training board on the right. Stacks on phones. */
+/* Layout: two-column workbench — header, game, eval graph and puzzle list on the left; a sticky training board on the right,
+   from the top of the page, sized so that the board and its actions fit in a short window. Stacks on phones, board after the game. */
 :root {
   --bg: #eef1ed; --surface: #fbfcfa; --ink: #18211d; --muted: #5a6760; --line: #d5dcd6;
   --accent: #2c6a55; --accent-ink: #ffffff; --accent-soft: #dcebe4;
@@ -58,13 +59,14 @@ h1 span { color: var(--accent) }
 .engine i { width: 8px; height: 8px; border-radius: 50%; background: var(--mistake) }
 .engine.ok i { background: var(--good) } .engine.err i { background: var(--bad) }
 
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 540px); grid-template-areas: "input trainer" "chart trainer" "list trainer"; gap: 20px 28px; align-items: start }
-@media (max-width: 920px) { .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "input" "chart" "trainer" "list" } }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 540px); grid-template-rows: auto auto auto 1fr; grid-template-areas: "head trainer" "input trainer" "chart trainer" "list trainer"; gap: 20px 28px; align-items: start }
+@media (max-width: 920px) { .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "head" "input" "trainer" "chart" "list" } }
+header.top { grid-area: head }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 14px; min-width: 0 }
 .panel h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; margin: 0; letter-spacing: -.005em }
 .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600 }
 .in { grid-area: input } .chartp { grid-area: chart } .listp { grid-area: list }
-.trainer { grid-area: trainer; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px) }
+.trainer { grid-area: trainer; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px) } /* script: a negative top when the panel is taller than the window */
 @media (max-width: 920px) { .trainer { position: static } }
 
 textarea#src { width: 100%; min-height: 150px; resize: vertical; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.55; padding: 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg) }
@@ -77,8 +79,23 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .btn:disabled { opacity: .45; cursor: default }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600 }
 .btn.primary:hover:not(:disabled) { filter: brightness(1.08) }
+.btn.util { padding: 4px 9px; font-size: 13px; color: var(--muted); background: transparent; border-color: transparent; white-space: nowrap } /* a quiet utility action */
+.btn.util:hover:not(:disabled) { color: var(--ink) }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
 .err { color: var(--bad); font-size: 14px; margin: 0 }
+
+/* Game panel: a one-line summary once a game is loaded; the PGN and the engine depth fold away under "Edit game". */
+.gsum { margin: 0; font-weight: 500; overflow-wrap: anywhere }
+.gsum span { color: var(--muted); font-weight: 400 }
+.setup { display: grid; gap: 14px }
+.setup > summary { justify-self: start; list-style: none; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--accent); padding: 2px 0 }
+.setup > summary::-webkit-details-marker { display: none }
+.setup > summary::before { content: "▸"; display: inline-block; width: 1em; transition: transform .15s }
+.setup[open] > summary::before { transform: rotate(90deg) }
+@media (prefers-reduced-motion: reduce) { .setup > summary::before { transition: none } }
+.filters { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center }
+.filters .field { display: flex; align-items: center; gap: 8px; font-size: 14px }
+.filters .check { padding-bottom: 0 }
 
 .progress { display: grid; gap: 6px }
 .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden }
@@ -102,7 +119,8 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .pitem[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent) }
 @media (max-width: 520px) { .pitem { grid-template-columns: auto minmax(0, 1fr); } .pitem .st { grid-column: 2 } }
 .pitem .mv { font-family: var(--f-mono); font-size: 13.5px; font-variant-numeric: tabular-nums }
-.pitem .who { color: var(--muted); font-size: 12.5px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.pitem .who { color: var(--muted); font-size: 13.5px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+@media (max-width: 520px) { .pitem .who { white-space: normal } } /* wrap: keep the eval change in view */
 .st { font-size: 12px; font-weight: 600; white-space: nowrap }
 .st.solved { color: var(--good) } .st.retry { color: var(--mistake) } .st.revealed { color: var(--bad) } .st.new { color: var(--muted); font-weight: 400 }
 .chip { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; text-align: center; white-space: nowrap }
@@ -113,8 +131,22 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .empty { color: var(--muted); font-size: 14px; margin: 0; padding: 14px; border: 1px dashed var(--line); border-radius: 8px }
 
 .thead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap }
-.prompt { font-family: var(--f-display); font-weight: 600; font-size: clamp(20px, 2.6vw, 25px); line-height: 1.15; margin: 0; text-wrap: balance; letter-spacing: -.01em }
-.ctx { color: var(--muted); font-size: 13.5px; margin: 0; font-family: var(--f-mono); font-variant-numeric: tabular-nums }
+/* Trainer head: the task first, then the puzzle type and the game move as context. */
+.trainer .prompt { font-family: var(--f-display); font-weight: 600; font-size: clamp(20px, 2.6vw, 25px); line-height: 1.15; margin: 0; text-wrap: balance; letter-spacing: -.01em } /* .trainer: wins over .panel h2 */
+.tprompt { align-items: baseline; flex-wrap: nowrap }
+.tprompt .ptext { white-space: nowrap }
+.tctx { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: -4px }
+.tctx .btn.util { margin-left: auto }
+.ctx { color: var(--muted); font-size: 14px; margin: 0; font-family: var(--f-mono); font-variant-numeric: tabular-nums }
+.actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center }
+.pager { display: inline-flex; margin-left: auto } /* on its own line, it stays at the right */
+.pager .btn:first-child { border-radius: 8px 0 0 8px }
+.pager .btn + .btn { border-radius: 0 8px 8px 0; margin-left: -1px }
+.pager .btn:focus-visible { position: relative; z-index: 1 }
+/* The board fits the window height with the head and the actions (--chrome: the height of all of them but the board).
+   The rest of the trainer keeps the board's width, so that the actions stay below the board in a wide, short window. */
+.trainer { --chrome: 210px; --bw: max(320px, calc(100svh - var(--chrome))) }
+.trainer > * { width: 100%; max-width: var(--bw); justify-self: center }
 
 .bframe { display: grid; grid-template-columns: 4.2cqi minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 4.2cqi; width: 100%; max-width: 100%; padding: 1.6cqi 1.6cqi 0 0; background: var(--frame); border-radius: 12px; box-shadow: 0 18px 40px -24px rgba(0,0,0,.6) }
 .bwrap { container-type: inline-size; width: 100% }
@@ -147,20 +179,20 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 
 .promo { display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
 .promo button { padding: 4px; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); cursor: pointer }
-.fb { border-radius: 8px; padding: 10px 12px; font-size: 14.5px; background: var(--bg); border-left: 4px solid var(--line); min-height: 44px; text-wrap: pretty }
+.fb { border-radius: 8px; padding: 10px 12px; font-size: 15px; background: var(--bg); border-left: 4px solid var(--line); min-height: 44px; text-wrap: pretty }
 .fb.good { background: var(--good-soft); border-left-color: var(--good) }
 .fb.bad { background: var(--bad-soft); border-left-color: var(--bad) }
-.fb.info { border-left-color: var(--accent) }
-.fb .line { font-family: var(--f-mono); font-size: 13px; display: block; margin-top: 4px; overflow-wrap: anywhere }
-.fb .note { display: block; margin-top: 6px }
+.fb.info { border-left-color: var(--accent); background: transparent; border-radius: 0 } /* plain instructions: no box */
+.fb .line { font-family: var(--f-mono); font-size: 14px; display: block; margin-top: 4px; overflow-wrap: anywhere }
+.fb .note { display: block; margin-top: 6px; font-size: inherit; color: inherit } /* the explanation: body text, not the fine-print .note */
 .fb .mvlink { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer }
 .copyout { width: 100%; min-height: 120px; font-family: var(--f-mono); font-size: 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); padding: 10px }
-.stepper { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px }
+.stepper { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line) } /* a divider, not another box */
 .stepper .seg { justify-self: start }
-.lline { margin: 0; font-family: var(--f-mono); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere }
+.lline { margin: 0; font-family: var(--f-mono); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere }
 .lline span { padding: 1px 3px; border-radius: 4px }
 .lline span.cur { background: var(--accent-soft); color: var(--ink); font-weight: 500; box-shadow: inset 0 -2px 0 var(--accent) }
-.lsum { margin: 0; font-size: 13.5px; color: var(--muted) }
+.lsum { margin: 0; font-size: 14.5px; color: var(--muted) }
 .lsum b { color: var(--ink); font-weight: 600 }
 .stepper .btn { min-width: 40px; justify-content: center; font-size: 17px; line-height: 1; padding: 7px 10px }
 .stepauto { margin-left: auto; padding-bottom: 0 }
@@ -170,29 +202,30 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 <body>
 <svg aria-hidden="true" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden"><defs><g id="pc-wk" stroke-linecap="round" stroke-linejoin="round" transform="translate(5.000000, 5.000000)" stroke="#000000" stroke-width="1.5"> <line x1="15" y1="4.96764706" x2="15" y2="0"/> <line x1="12.8571429" y1="1.76470588" x2="17.1428571" y2="1.76470588"/> <path d="M17.5714286,7.5 C17.5714286,7.5 16.7142857,5.29411765 15,5.29411765 C13.2857143,5.29411765 12.4285714,7.5 12.4285714,7.5 C11.1428571,10.1470588 15,16.7647059 15,16.7647059 C15,16.7647059 18.8571429,10.1470588 17.5714286,7.5 Z" fill="#FFFFFF"/> <path d="M5.57142857,27.3529412 C10.2857143,30.4411765 18.8571429,30.4411765 23.5714286,27.3529412 L23.5714286,21.1764706 C23.5714286,21.1764706 31.2857143,17.2058824 28.7142857,11.9117647 C25.2857143,6.17647059 17.1428571,8.82352941 15,15.4411765 L15,18.5294118 L15,15.4411765 C12,8.82352941 3.85714286,6.17647059 1.28571429,11.9117647 C-1.28571429,17.2058824 5.57142857,20.7352941 5.57142857,20.7352941 L5.57142857,27.3529412 Z" fill="#FFFFFF"/> <path d="M5.57142857,21.1764706 C10.2857143,18.5294118 18.8571429,18.5294118 23.5714286,21.1764706" fill-opacity="0" fill="#000000"/> <path d="M5.57142857,24.2647059 C10.2857143,21.6176471 18.8571429,21.6176471 23.5714286,24.2647059" fill-opacity="0" fill="#000000" stroke-linecap="square"/> <path d="M5.57142857,27.3529412 C10.2857143,24.7058824 18.8571429,24.7058824 23.5714286,27.3529412" fill-opacity="0" fill="#000000"/> </g><g id="pc-wq" stroke-linecap="round" stroke-linejoin="round" transform="translate(4.000000, 5.000000)" stroke="#000000" stroke-width="1.5"> <path d="M3.45945946,6.2 C3.45945946,7.17833299 2.68503308,7.97142857 1.72972973,7.97142857 C0.774426379,7.97142857 0,7.17833299 0,6.2 C0,5.22166701 0.774426379,4.42857143 1.72972973,4.42857143 C2.68503308,4.42857143 3.45945946,5.22166701 3.45945946,6.2 Z" fill="#FFFFFF"/> <path d="M17.7297297,2.21428571 C17.7297297,3.1926187 16.9553034,3.98571429 16,3.98571429 C15.0446966,3.98571429 14.2702703,3.1926187 14.2702703,2.21428571 C14.2702703,1.23595273 15.0446966,0.442857143 16,0.442857143 C16.9553034,0.442857143 17.7297297,1.23595273 17.7297297,2.21428571 Z" fill="#FFFFFF"/> <path d="M32,6.2 C32,7.17833299 31.2255736,7.97142857 30.2702703,7.97142857 C29.3149669,7.97142857 28.5405405,7.17833299 28.5405405,6.2 C28.5405405,5.22166701 29.3149669,4.42857143 30.2702703,4.42857143 C31.2255736,4.42857143 32,5.22166701 32,6.2 Z" fill="#FFFFFF"/> <path d="M10.3783784,3.1 C10.3783784,4.07833299 9.603952,4.87142857 8.64864865,4.87142857 C7.6933453,4.87142857 6.91891892,4.07833299 6.91891892,3.1 C6.91891892,2.12166701 7.6933453,1.32857143 8.64864865,1.32857143 C9.603952,1.32857143 10.3783784,2.12166701 10.3783784,3.1 Z" fill="#FFFFFF"/> <path d="M25.0810811,3.54285714 C25.0810811,4.52119013 24.3066547,5.31428571 23.3513514,5.31428571 C22.396048,5.31428571 21.6216216,4.52119013 21.6216216,3.54285714 C21.6216216,2.56452416 22.396048,1.77142857 23.3513514,1.77142857 C24.3066547,1.77142857 25.0810811,2.56452416 25.0810811,3.54285714 Z" fill="#FFFFFF"/> <path d="M4.32432432,18.6 C11.6756757,17.2714286 22.4864865,17.2714286 27.6756757,18.6 L29.4054054,7.97142857 L23.3513514,17.7142857 L23.3513514,5.31428571 L18.5945946,17.2714286 L16,3.98571429 L13.4054054,17.2714286 L8.64864865,4.87142857 L8.64864865,17.7142857 L2.59459459,7.97142857 L4.32432432,18.6 Z" fill="#FFFFFF"/> <path d="M4.32432432,18.6 C4.32432432,20.3714286 5.62162162,20.3714286 6.48648649,22.1428571 C7.35135135,23.4714286 7.35135135,23.0285714 6.91891892,25.2428571 C5.62162162,26.1285714 5.62162162,27.4571429 5.62162162,27.4571429 C4.32432432,28.7857143 6.05405405,29.6714286 6.05405405,29.6714286 C11.6756757,30.5571429 20.3243243,30.5571429 25.9459459,29.6714286 C25.9459459,29.6714286 27.2432432,28.7857143 25.9459459,27.4571429 C25.9459459,27.4571429 26.3783784,26.1285714 25.0810811,25.2428571 C24.6486486,23.0285714 24.6486486,23.4714286 25.5135135,22.1428571 C26.3783784,20.3714286 27.6756757,20.3714286 27.6756757,18.6 C20.3243243,17.2714286 11.6756757,17.2714286 4.32432432,18.6 Z" fill="#FFFFFF"/> <path d="M6.48648649,22.1428571 C9.51351351,21.2571429 22.4864865,21.2571429 25.5135135,22.1428571"/> <path d="M6.91891892,25.2428571 C12.1081081,24.3571429 19.8918919,24.3571429 25.0810811,25.2428571"/> </g><g id="pc-wr" stroke-linecap="round" stroke-linejoin="round" transform="translate(9.000000, 8.000000)" stroke="#000000" stroke-width="1.5"> <polygon fill="#FFFFFF" points="0 26 22 26 22 23.4 0 23.4"/> <polygon fill="#FFFFFF" points="2.44444444 23.4 2.44444444 19.9333333 19.5555556 19.9333333 19.5555556 23.4"/> <polyline fill="#FFFFFF" points="1.62962963 4.33333333 1.62962963 0 4.88888889 0 4.88888889 1.73333333 8.96296296 1.73333333 8.96296296 0 13.037037 0 13.037037 1.73333333 17.1111111 1.73333333 17.1111111 0 20.3703704 0 20.3703704 4.33333333"/> <polyline fill="#FFFFFF" points="20.3703704 4.33333333 17.9259259 6.93333333 4.07407407 6.93333333 1.62962963 4.33333333"/> <polyline fill="#FFFFFF" points="17.9259259 6.93333333 17.9259259 17.7666667 4.07407407 17.7666667 4.07407407 6.93333333"/> <polyline fill="#FFFFFF" points="17.9259259 17.7666667 19.1481481 19.9333333 2.85185185 19.9333333 4.07407407 17.7666667"/> <line x1="1.62962963" y1="4.33333333" x2="20.3703704" y2="4.33333333"/> </g><g id="pc-wb" stroke-linecap="round" stroke-linejoin="round" transform="translate(6.000000, 5.000000)" stroke="#000000" stroke-width="1.5"> <g fill="#FFFFFF"> <path d="M2.54545455,27.3529412 C5.42181818,26.4970588 11.1236364,27.7323529 14,25.5882353 C16.8763636,27.7323529 22.5781818,26.4970588 25.4545455,27.3529412 C25.4545455,27.3529412 26.8545455,27.8294118 28,29.1176471 C27.4230303,29.9735294 26.6,29.9911765 25.4545455,29.5588235 C22.5781818,28.7029412 16.8763636,29.9647059 14,28.6764706 C11.1236364,29.9647059 5.42181818,28.7029412 2.54545455,29.5588235 C1.39660606,29.9911765 0.574424242,29.9735294 0,29.1176471 C1.14884848,27.4058824 2.54545455,27.3529412 2.54545455,27.3529412 Z" /> <path d="M7.63636364,23.8235294 C9.75757576,26.0294118 18.2424242,26.0294118 20.3636364,23.8235294 C20.7878788,22.5 20.3636364,22.0588235 20.3636364,22.0588235 C20.3636364,19.8529412 18.2424242,18.5294118 18.2424242,18.5294118 C22.9090909,17.2058824 23.3333333,8.38235294 14,4.85294118 C4.66666667,8.38235294 5.09090909,17.2058824 9.75757576,18.5294118 C9.75757576,18.5294118 7.63636364,19.8529412 7.63636364,22.0588235 C7.63636364,22.0588235 7.21212121,22.5 7.63636364,23.8235294 Z" /> <path d="M16.1212121,2.64705882 C16.1212121,3.86533401 15.1715131,4.85294118 14,4.85294118 C12.8284869,4.85294118 11.8787879,3.86533401 11.8787879,2.64705882 C11.8787879,1.42878364 12.8284869,0.441176471 14,0.441176471 C15.1715131,0.441176471 16.1212121,1.42878364 16.1212121,2.64705882 Z" /> </g> <path d="M9.75757576,18.5294118 L18.2424242,18.5294118 M7.63636364,22.0588235 L20.3636364,22.0588235 M14,9.26470588 L14,13.6764706 M11.8787879,11.4705882 L16.1212121,11.4705882" /> </g><g id="pc-wn" stroke-linecap="round" stroke-linejoin="round" transform="translate(6.000000, 6.000000)" stroke="#000000"> <path d="M13.5757576,2.625 C22.4848485,3.5 27.5757576,9.625 27.1515152,28 L7.63636364,28 C7.63636364,20.125 16.1212121,22.3125 14.4242424,9.625" stroke-width="1.5" fill="#FFFFFF"/> <path d="M15.2727273,9.625 C15.5951515,12.17125 10.5636364,16.07375 8.48484848,17.5 C5.93939394,19.25 6.09212121,21.2975 4.24242424,21 C3.35830303,20.1775 5.43878788,18.34 4.24242424,18.375 C3.39393939,18.375 4.40363636,19.45125 3.39393939,20.125 C2.54545455,20.125 -0.00254545455,21 -1.90580876e-06,16.625 C-1.90580876e-06,14.875 5.09090909,6.125 5.09090909,6.125 C5.09090909,6.125 6.69454545,4.4625 6.78787879,3.0625 C6.16848485,2.19275 6.36363636,1.3125 6.36363636,0.4375 C7.21212121,-0.4375 8.90909091,2.625 8.90909091,2.625 L10.6060606,2.625 C10.6060606,2.625 11.2678788,0.882 12.7272727,0 C13.5757576,0 13.5757576,2.625 13.5757576,2.625" stroke-width="1.5" fill="#FFFFFF"/> <path d="M2.96969697,16.1875 C2.96969697,16.4291246 2.77975717,16.625 2.54545455,16.625 C2.31115192,16.625 2.12121212,16.4291246 2.12121212,16.1875 C2.12121212,15.9458754 2.31115192,15.75 2.54545455,15.75 C2.77975717,15.75 2.96969697,15.9458754 2.96969697,16.1875 Z" stroke-width="1.5" fill="#000000"/> <path d="M7.6363543,7.4375 C7.6363543,8.16235779 7.44641868,8.74997112 7.21212121,8.74997112 C6.97782375,8.74997112 6.78788812,8.16235779 6.78788812,7.4375 C6.78788812,6.71264221 6.97782375,6.12502888 7.21212121,6.12502888 C7.44641868,6.12502888 7.6363543,6.71264221 7.6363543,7.4375 L7.6363543,7.4375 Z" stroke-width="1.499967" fill="#000000" transform="translate(7.212121, 7.437500) rotate(30.000728) translate(-7.212121, -7.437500) "/> </g><g id="pc-wp" transform="translate(10.000000, 9.000000)" fill="#FFFFFF" stroke="#000000" stroke-linecap="round" stroke-width="1.5"> <path d="M10,0 C8.15833333,0 6.66666667,1.50129032 6.66666667,3.35483871 C6.66666667,4.10129032 6.90833333,4.78903226 7.31666667,5.35096774 C5.69166667,6.29032258 4.58333333,8.04322581 4.58333333,10.0645161 C4.58333333,11.7670968 5.36666667,13.2851613 6.59166667,14.2832258 C4.09166667,15.1722581 0.416666667,18.9380645 0.416666667,25.5806452 L19.5833333,25.5806452 C19.5833333,18.9380645 15.9083333,15.1722581 13.4083333,14.2832258 C14.6333333,13.2851613 15.4166667,11.7670968 15.4166667,10.0645161 C15.4166667,8.04322581 14.3083333,6.29032258 12.6833333,5.35096774 C13.0916667,4.78903226 13.3333333,4.10129032 13.3333333,3.35483871 C13.3333333,1.50129032 11.8416667,0 10,0 Z" /> </g><g id="pc-bk" stroke-linecap="round" stroke-linejoin="round" transform="translate(5.000000, 5.000000)" stroke-width="1.5"> <line x1="15" y1="4.96764706" x2="15" y2="0" stroke="#000000"/> <path d="M15,16.7647059 C15,16.7647059 18.8571429,10.1470588 17.5714286,7.5 C17.5714286,7.5 16.7142857,5.29411765 15,5.29411765 C13.2857143,5.29411765 12.4285714,7.5 12.4285714,7.5 C11.1428571,10.1470588 15,16.7647059 15,16.7647059" stroke="#000000" fill="#000000"/> <path d="M5.57142857,27.3529412 C10.2857143,30.4411765 18.8571429,30.4411765 23.5714286,27.3529412 L23.5714286,21.1764706 C23.5714286,21.1764706 31.2857143,17.2058824 28.7142857,11.9117647 C25.2857143,6.17647059 17.1428571,8.82352941 15,15.4411765 L15,18.5294118 L15,15.4411765 C12,8.82352941 3.85714286,6.17647059 1.28571429,11.9117647 C-1.28571429,17.2058824 5.57142857,20.7352941 5.57142857,20.7352941 L5.57142857,27.3529412 Z" stroke="#000000" fill="#000000"/> <line x1="12.8571429" y1="1.76470588" x2="17.1428571" y2="1.76470588" stroke="#000000"/> <path d="M23.1428571,20.7352941 C23.1428571,20.7352941 30.4285714,17.2058824 28.3114286,12.2205882 C24.9857143,7.05882353 17.1428571,10.5882353 15,16.3235294 L15.0085714,18.1764706 L15,16.3235294 C12.8571429,10.5882353 4.20514286,7.05882353 1.71171429,12.2205882 C-0.428571429,17.2058824 5.87142857,20.1617647 5.87142857,20.1617647" stroke="#FFFFFF"/> <path d="M5.57142857,21.1764706 C10.2857143,18.5294118 18.8571429,18.5294118 23.5714286,21.1764706 M5.57142857,24.2647059 C10.2857143,21.6176471 18.8571429,21.6176471 23.5714286,24.2647059 M5.57142857,27.3529412 C10.2857143,24.7058824 18.8571429,24.7058824 23.5714286,27.3529412" stroke="#FFFFFF"/> </g><g id="pc-bq" stroke-linecap="round" stroke-linejoin="round" transform="translate(3.000000, 4.000000)"> <g fill="#000000"> <ellipse cx="2.61538462" cy="6.22222222" rx="2.3974359" ry="2.44444444"/> <ellipse cx="9.58974359" cy="3.55555556" rx="2.3974359" ry="2.44444444"/> <ellipse cx="17" cy="2.66666667" rx="2.3974359" ry="2.44444444"/> <ellipse cx="24.4102564" cy="3.55555556" rx="2.3974359" ry="2.44444444"/> <ellipse cx="31.3846154" cy="6.22222222" rx="2.3974359" ry="2.44444444"/> </g> <path d="M5.23076923,18.6666667 C12.6410256,17.3333333 23.5384615,17.3333333 28.7692308,18.6666667 L30.9487179,7.55555556 L24.4102564,17.7777778 L24.1487179,5.24444444 L19.6153846,17.3333333 L17,4.44444444 L14.3846154,17.3333333 L9.85128205,5.24444444 L9.58974359,17.7777778 L3.05128205,7.55555556 L5.23076923,18.6666667 Z" stroke="#000000" stroke-width="1.5" fill="#000000"/> <path d="M5.23076923,18.6666667 C5.23076923,20.4444444 6.53846154,20.4444444 7.41025641,22.2222222 C8.28205128,23.5555556 8.28205128,23.1111111 7.84615385,25.3333333 C6.53846154,26.2222222 6.53846154,27.5555556 6.53846154,27.5555556 C5.23076923,28.8888889 6.97435897,29.7777778 6.97435897,29.7777778 C12.6410256,30.6666667 21.3589744,30.6666667 27.025641,29.7777778 C27.025641,29.7777778 28.3333333,28.8888889 27.025641,27.5555556 C27.025641,27.5555556 27.4615385,26.2222222 26.1538462,25.3333333 C25.7179487,23.1111111 25.7179487,23.5555556 26.5897436,22.2222222 C27.4615385,20.4444444 28.7692308,20.4444444 28.7692308,18.6666667 C21.3589744,17.3333333 12.6410256,17.3333333 5.23076923,18.6666667 Z" stroke="#000000" stroke-width="1.5" fill="#000000"/> <path d="M6.97435897,29.7777778 C13.4672777,32.080866 20.5327223,32.080866 27.025641,29.7777778" stroke="#000000" stroke-width="1.5"/> <path d="M6.97435897,21.3333333 C13.4672777,19.0302452 20.5327223,19.0302452 27.025641,21.3333333" stroke="#FFFFFF" stroke-width="1.5"/> <line x1="8.28205128" y1="23.5555556" x2="25.7179487" y2="23.5555556" stroke="#FFFFFF" stroke-width="1.5"/> <path d="M7.41025641,26.2222222 C13.6372326,28.3241535 20.3627674,28.3241535 26.5897436,26.2222222" stroke="#FFFFFF" stroke-width="1.5"/> <path d="M6.53846154,28.8888889 C13.2948481,31.4031829 20.7051519,31.4031829 27.4615385,28.8888889" stroke="#FFFFFF" stroke-width="1.5"/> </g><g id="pc-br" stroke-linecap="round" stroke-linejoin="round" transform="translate(9.000000, 8.000000)"> <polygon stroke="#000000" stroke-width="1.5" fill="#000000" points="0 26 22 26 22 23.4 0 23.4"/> <polygon stroke="#000000" stroke-width="1.5" fill="#000000" points="2.85185185 19.9333333 4.07407407 17.7666667 17.9259259 17.7666667 19.1481481 19.9333333"/> <polygon stroke="#000000" stroke-width="1.5" fill="#000000" points="2.44444444 23.4 2.44444444 19.9333333 19.5555556 19.9333333 19.5555556 23.4"/> <polygon stroke="#000000" stroke-width="1.5" fill="#000000" points="4.07407407 17.7666667 4.07407407 6.5 17.9259259 6.5 17.9259259 17.7666667"/> <polygon stroke="#000000" stroke-width="1.5" fill="#000000" points="4.07407407 6.5 1.62962963 4.33333333 20.3703704 4.33333333 17.9259259 6.5"/> <polygon stroke="#000000" stroke-width="1.5" fill="#000000" points="1.62962963 4.33333333 1.62962963 0 4.88888889 0 4.88888889 1.73333333 8.96296296 1.73333333 8.96296296 0 13.037037 0 13.037037 1.73333333 17.1111111 1.73333333 17.1111111 0 20.3703704 0 20.3703704 4.33333333"/> <polyline stroke="#FFFFFF" points="2.44444444 22.9666667 19.5555556 22.9666667 19.5555556 22.9666667"/> <line x1="3.25925926" y1="19.5" x2="18.7407407" y2="19.5" stroke="#FFFFFF"/> <line x1="4.07407407" y1="17.7666667" x2="17.9259259" y2="17.7666667" stroke="#FFFFFF"/> <line x1="4.07407407" y1="6.5" x2="17.9259259" y2="6.5" stroke="#FFFFFF"/> <line x1="1.62962963" y1="4.33333333" x2="20.3703704" y2="4.33333333" stroke="#FFFFFF"/> </g><g id="pc-bb" stroke-linecap="round" stroke-linejoin="round" transform="translate(6.000000, 5.000000)" stroke-width="1.5"> <g fill="#000000" stroke="#000000"> <path d="M2.54545455,27.3529412 C5.42181818,26.4970588 11.1236364,27.7323529 14,25.5882353 C16.8763636,27.7323529 22.5781818,26.4970588 25.4545455,27.3529412 C25.4545455,27.3529412 26.8545455,27.8294118 28,29.1176471 C27.4230303,29.9735294 26.6,29.9911765 25.4545455,29.5588235 C22.5781818,28.7029412 16.8763636,29.9647059 14,28.6764706 C11.1236364,29.9647059 5.42181818,28.7029412 2.54545455,29.5588235 C1.39660606,29.9911765 0.574424242,29.9735294 0,29.1176471 C1.14884848,27.4058824 2.54545455,27.3529412 2.54545455,27.3529412 Z" /> <path d="M7.63636364,23.8235294 C9.75757576,26.0294118 18.2424242,26.0294118 20.3636364,23.8235294 C20.7878788,22.5 20.3636364,22.0588235 20.3636364,22.0588235 C20.3636364,19.8529412 18.2424242,18.5294118 18.2424242,18.5294118 C22.9090909,17.2058824 23.3333333,8.38235294 14,4.85294118 C4.66666667,8.38235294 5.09090909,17.2058824 9.75757576,18.5294118 C9.75757576,18.5294118 7.63636364,19.8529412 7.63636364,22.0588235 C7.63636364,22.0588235 7.21212121,22.5 7.63636364,23.8235294 Z" /> <path d="M16.1212121,2.64705882 C16.1212121,3.86533401 15.1715131,4.85294118 14,4.85294118 C12.8284869,4.85294118 11.8787879,3.86533401 11.8787879,2.64705882 C11.8787879,1.42878364 12.8284869,0.441176471 14,0.441176471 C15.1715131,0.441176471 16.1212121,1.42878364 16.1212121,2.64705882 Z" /> </g> <path d="M9.75757576,18.5294118 L18.2424242,18.5294118 M7.63636364,22.0588235 L20.3636364,22.0588235 M14,9.26470588 L14,13.6764706 M11.8787879,11.4705882 L16.1212121,11.4705882" stroke="#FFFFFF"/> </g><g id="pc-bn" stroke-linecap="round" stroke-linejoin="round" transform="translate(6.000000, 6.000000)"> <path d="M13.5757576,2.63636364 C22.4848485,3.51515152 27.5757576,9.66666667 27.1515152,28.1212121 L7.63636364,28.1212121 C7.63636364,20.2121212 16.1212121,22.4090909 14.4242424,9.66666667" stroke="#000000" stroke-width="1.5" fill="#000000"/> <path d="M15.2727273,9.66666667 C15.5951515,12.2239394 10.5636364,16.1433333 8.48484848,17.5757576 C5.93939394,19.3333333 6.09212121,21.389697 4.24242424,21.0909091 C3.35830303,20.2648485 5.43878788,18.4193939 4.24242424,18.4545455 C3.39393939,18.4545455 4.40363636,19.5354545 3.39393939,20.2121212 C2.54545455,20.2121212 -0.00254545455,21.0909091 -1.90580876e-06,16.6969697 C-1.90580876e-06,14.9393939 5.09090909,6.15151515 5.09090909,6.15151515 C5.09090909,6.15151515 6.69454545,4.48181818 6.78787879,3.07575758 C6.16848485,2.20224242 6.36363636,1.31818182 6.36363636,0.439393939 C7.21212121,-0.439393939 8.90909091,2.63636364 8.90909091,2.63636364 L10.6060606,2.63636364 C10.6060606,2.63636364 11.2678788,0.885818182 12.7272727,0 C13.5757576,0 13.5757576,2.63636364 13.5757576,2.63636364" stroke="#000000" stroke-width="1.5" fill="#000000"/> <path d="M2.96969697,16.2575758 C2.96969697,16.5002463 2.77975717,16.6969697 2.54545455,16.6969697 C2.31115192,16.6969697 2.12121212,16.5002463 2.12121212,16.2575758 C2.12121212,16.0149052 2.31115192,15.8181818 2.54545455,15.8181818 C2.77975717,15.8181818 2.96969697,16.0149052 2.96969697,16.2575758 Z" stroke="#FFFFFF" stroke-width="1.5" fill="#FFFFFF"/> <path d="M7.6363543,7.46969697 C7.6363543,8.19769267 7.44641868,8.78784979 7.21212121,8.78784979 C6.97782375,8.78784979 6.78788812,8.19769267 6.78788812,7.46969697 C6.78788812,6.74170127 6.97782375,6.15154415 7.21212121,6.15154415 C7.44641868,6.15154415 7.6363543,6.74170127 7.6363543,7.46969697 L7.6363543,7.46969697 Z" stroke="#FFFFFF" stroke-width="1.499967" fill="#FFFFFF" transform="translate(7.212121, 7.469697) rotate(30.000728) translate(-7.212121, -7.469697) "/> <path d="M15.7393939,2.98787879 L15.3575758,4.26212121 L15.7818182,4.39393939 C18.4545455,5.27272727 20.5757576,6.58212121 22.4848485,10.3257576 C24.3939394,14.0693939 25.2424242,19.3860606 24.8181818,28.1212121 L24.7757576,28.5606061 L26.6848485,28.5606061 L26.7272727,28.1212121 C27.1515152,19.2806061 25.9806061,13.3136364 23.969697,9.36787879 C21.9587879,5.42212121 19.0569697,3.53272727 16.1721212,3.07575758 L15.7393939,2.98787879 Z" fill="#FFFFFF"/> </g><g id="pc-bp" transform="translate(10.000000, 8.000000)" fill="#000000" stroke="#000000" stroke-linecap="round" stroke-width="1.5"> <path d="M10,0 C8.15833333,0 6.66666667,1.50129032 6.66666667,3.35483871 C6.66666667,4.10129032 6.90833333,4.78903226 7.31666667,5.35096774 C5.69166667,6.29032258 4.58333333,8.04322581 4.58333333,10.0645161 C4.58333333,11.7670968 5.36666667,13.2851613 6.59166667,14.2832258 C4.09166667,15.1722581 0.416666667,18.9380645 0.416666667,25.5806452 L19.5833333,25.5806452 C19.5833333,18.9380645 15.9083333,15.1722581 13.4083333,14.2832258 C14.6333333,13.2851613 15.4166667,11.7670968 15.4166667,10.0645161 C15.4166667,8.04322581 14.3083333,6.29032258 12.6833333,5.35096774 C13.0916667,4.78903226 13.3333333,4.10129032 13.3333333,3.35483871 C13.3333333,1.50129032 11.8416667,0 10,0 Z" /> </g></defs></svg>
 <div class="wrap">
-  <header class="top">
-    <div>
-      <h1>Blunder <span>Drills</span></h1>
-      <p class="tag">Paste a game in PGN format. Stockfish runs in your browser, finds the blunders and missed mates, and turns each one into a puzzle.</p>
-    </div>
-    <div class="engine" id="engine"><i></i><span id="engineText">Loading Stockfish 18…</span></div>
-  </header>
-
   <div class="layout">
+    <header class="top">
+      <div>
+        <h1>Blunder <span>Drills</span></h1>
+        <p class="tag">Paste a game in PGN format. Stockfish runs in your browser, finds the blunders and missed mates, and turns each one into a puzzle.</p>
+      </div>
+      <div class="engine" id="engine"><i></i><span id="engineText">Loading Stockfish 18…</span></div>
+    </header>
+
     <section class="panel in" aria-labelledby="h-in">
       <h2 id="h-in">Game</h2>
-      <textarea id="src" spellcheck="false" aria-label="Game in PGN format"></textarea>
-      <div class="controls">
-        <div class="field"><label class="label" for="depth">Engine depth</label>
-          <select id="depth"><option value="10">Fast · 10</option><option value="14" selected>Normal · 14</option><option value="18">Deep · 18</option></select></div>
-        <div class="field"><label class="label" for="maxMate">Missed mates up to</label>
-          <select id="maxMate"><option value="1">Mate in 1</option><option value="2" selected>Mate in 2</option><option value="3">Mate in 3</option><option value="4">Mate in 4</option><option value="5">Mate in 5</option></select></div>
-        <label class="check"><input type="checkbox" id="mistakes"> Include mistakes</label>
-      </div>
-      <div class="row">
-        <button class="btn primary" id="run">Analyze</button>
-        <button class="btn" id="sample" type="button">Load sample game</button>
-      </div>
+      <p class="gsum" id="gsum" hidden></p>
+      <details class="setup" id="setup">
+        <summary>Edit game and engine depth</summary>
+        <textarea id="src" spellcheck="false" aria-label="Game in PGN format"></textarea>
+        <div class="controls">
+          <div class="field"><label class="label" for="depth">Engine depth</label>
+            <select id="depth"><option value="10">Fast · 10</option><option value="14" selected>Normal · 14</option><option value="18">Deep · 18</option></select></div>
+        </div>
+        <div class="row">
+          <button class="btn primary" id="run">Analyze</button>
+          <button class="btn" id="sample" type="button">Load sample game</button>
+        </div>
+      </details>
       <p class="err" id="err" hidden></p>
       <div class="progress" id="prog" hidden>
         <div class="bar"><div id="barFill"></div></div>
@@ -200,30 +233,22 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
       </div>
     </section>
 
-    <section class="panel chartp" aria-labelledby="h-chart">
-      <div class="thead"><h2 id="h-chart">Evaluation</h2><span class="ptext" id="evalNow"></span></div>
-      <svg class="chart" id="chart" viewBox="0 0 600 150" role="img" aria-label="Evaluation over the game"></svg>
-      <div class="legend"><span><b style="background:var(--mate)"></b>Missed mate</span><span><b style="background:var(--blunder)"></b>Blunder</span><span><b style="background:var(--mistake)"></b>Mistake</span><span>Light area: White is better</span></div>
-    </section>
-
-    <section class="panel listp" aria-labelledby="h-list">
-      <div class="thead"><h2 id="h-list">Puzzles</h2><button class="btn" id="copyAll" disabled>Copy as Lichess study PGN</button></div>
-      <p class="summary" id="summary">Puzzles appear here as the engine finds them.</p>
-      <div class="seg" id="who" role="group" aria-label="Whose moves"></div>
-      <ul class="plist" id="plist"></ul>
-      <div id="copyBox" hidden>
-        <p class="note">Your browser blocked the clipboard. Select the text below and copy it, then paste into a Lichess Study with Add chapter → PGN.</p>
-        <textarea class="copyout" id="copyOut" readonly></textarea>
-      </div>
-      <p class="note">Tip: in a Lichess Study, paste this under Add chapter → PGN, then set each chapter to Interactive lesson.</p>
-    </section>
-
     <section class="panel trainer" aria-labelledby="prompt">
-      <div class="thead"><span class="chip best" id="tchip">Position</span><span class="ptext" id="tcount"></span></div>
-      <h2 class="prompt" id="prompt">Waiting for analysis</h2>
-      <p class="ctx" id="ctx">&nbsp;</p>
+      <div class="thead tprompt"><h2 class="prompt" id="prompt">Waiting for analysis</h2><span class="ptext" id="tcount"></span></div>
+      <div class="tctx"><span class="chip best" id="tchip">Position</span><p class="ctx" id="ctx">&nbsp;</p><button class="btn util" id="bFen">Copy FEN</button></div>
       <div class="bwrap"><div class="bframe" id="bframe"><div class="ranks" id="ranks" aria-hidden="true"></div><div class="board" id="board" aria-label="Chess board"></div><div class="files" id="files" aria-hidden="true"></div></div></div>
       <div class="promo" id="promo" hidden><span class="label">Promote to</span></div>
+      <div class="actions">
+        <div class="row" role="group" aria-label="Help with this puzzle">
+          <button class="btn" id="bHint">Hint</button>
+          <button class="btn" id="bSol">Show solution</button>
+          <button class="btn" id="bRetry">Retry</button>
+        </div>
+        <div class="pager" role="group" aria-label="Puzzles">
+          <button class="btn" id="bPrev">← Prev</button>
+          <button class="btn" id="bNext">Next →</button>
+        </div>
+      </div>
       <div class="fb info" id="fb" aria-live="polite">Click a piece, then click where it goes.</div>
       <div class="stepper" id="stepper" hidden>
         <div class="seg" id="lWhich" role="group" aria-label="Line to show">
@@ -242,14 +267,29 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
           <label class="check stepauto"><input type="checkbox" id="autoplay"> Autoplay</label>
         </div>
       </div>
-      <div class="row">
-        <button class="btn" id="bPrev">← Prev</button>
-        <button class="btn" id="bHint">Hint</button>
-        <button class="btn" id="bSol">Show solution</button>
-        <button class="btn" id="bRetry">Retry</button>
-        <button class="btn primary" id="bNext">Next →</button>
-        <button class="btn" id="bFen">Copy FEN</button>
+    </section>
+
+    <section class="panel chartp" aria-labelledby="h-chart">
+      <div class="thead"><h2 id="h-chart">Evaluation</h2><span class="ptext" id="evalNow"></span></div>
+      <svg class="chart" id="chart" viewBox="0 0 600 120" role="img" aria-label="Evaluation over the game"></svg>
+      <div class="legend"><span><b style="background:var(--mate)"></b>Missed mate</span><span><b style="background:var(--blunder)"></b>Blunder</span><span><b style="background:var(--mistake)"></b>Mistake</span><span>Light area: White is better</span></div>
+    </section>
+
+    <section class="panel listp" aria-labelledby="h-list">
+      <div class="thead"><h2 id="h-list">Puzzles</h2><button class="btn" id="copyAll" disabled>Copy as Lichess study PGN</button></div>
+      <p class="summary" id="summary">Puzzles appear here as the engine finds them.</p>
+      <div class="seg" id="who" role="group" aria-label="Whose moves"></div>
+      <div class="filters">
+        <div class="field"><label for="maxMate">Missed mates up to</label>
+          <select id="maxMate"><option value="1">Mate in 1</option><option value="2" selected>Mate in 2</option><option value="3">Mate in 3</option><option value="4">Mate in 4</option><option value="5">Mate in 5</option></select></div>
+        <label class="check"><input type="checkbox" id="mistakes"> Include mistakes</label>
       </div>
+      <ul class="plist" id="plist"></ul>
+      <div id="copyBox" hidden>
+        <p class="note">Your browser blocked the clipboard. Select the text below and copy it, then paste into a Lichess Study with Add chapter → PGN.</p>
+        <textarea class="copyout" id="copyOut" readonly></textarea>
+      </div>
+      <p class="note">Tip: in a Lichess Study, paste this under Add chapter → PGN, then set each chapter to Interactive lesson.</p>
     </section>
   </div>
   <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, CC BY-SA 3.0.</p>
@@ -430,14 +470,15 @@ function playerName(c) { const h = S.game && S.game.headers || {}; const n = c =
 async function analyze() {
   $('#err').hidden = true;
   let game;
-  try { game = parseInput($('#src').value) } catch (e) { $('#err').textContent = e.message; $('#err').hidden = false; return }
+  try { game = parseInput($('#src').value) } catch (e) { $('#err').textContent = e.message; $('#err').hidden = false; $('#setup').open = true; return }
   store.set('drills.src', $('#src').value);
+  $('#setup').open = false; // the game summary replaces the PGN while you train
   const run = ++S.run;
   const depth = +$('#depth').value;
   S.game = game; S.evals = new Array(game.positions.length); S.puzzles = []; S.analyzedDepth = depth; S.current = -1;
   T.userTouched = false;
   $('#evalNow').textContent = '';
-  renderWho(); refreshPuzzles(); drawChart();
+  renderWho(); renderGameSummary(); refreshPuzzles(); drawChart();
   showPosition(game.positions[game.positions.length - 1], game.moves[game.moves.length - 1]);
   $('#prog').hidden = false;
   try { await Engine.ready } catch { setProgress(0, 'The engine could not start in this browser.'); return }
@@ -461,6 +502,13 @@ async function analyze() {
   const last = S.evals[n - 1];
   if (last) $('#evalNow').textContent = 'Final ' + fmt(forWhite(last.score, game.positions[n - 1].split(' ')[1]));
   if (!S.puzzles.length) setFeedback('info', 'No blunders or missed mates found with these settings. Try "Include mistakes" or a deeper search.');
+}
+// One line for the loaded game, for example "Alex Sample vs Sam Example · 1-0 · 44 moves".
+function renderGameSummary() {
+  const g = S.game, el = $('#gsum'); el.hidden = !g; if (!g) return;
+  const r = g.headers.Result, n = Math.ceil(g.moves.length / 2), rest = document.createElement('span');
+  rest.textContent = (r && r !== '*' ? ` · ${r}` : '') + ` · ${n} move${n === 1 ? '' : 's'}`;
+  el.textContent = `${playerName('w')} vs ${playerName('b')}`; el.appendChild(rest);
 }
 function setProgress(f, text) { $('#barFill').style.width = (f * 100).toFixed(1) + '%'; $('#ptext').textContent = text }
 
@@ -536,7 +584,7 @@ function renderList() {
   }
   $('#copyAll').disabled = !vis.length;
 }
-const CHART = { W: 600, H: 150, padL: 34, padR: 8, padT: 8, padB: 22 }; // the chart's viewBox and plot margins
+const CHART = { W: 600, H: 120, padL: 34, padR: 8, padT: 8, padB: 22 }; // the chart's viewBox and plot margins
 function drawChart() {
   const svg = $('#chart'); const g = S.game;
   const { W, H, padL, padR, padT, padB } = CHART;
@@ -566,7 +614,8 @@ function drawChart() {
     if (!visible().includes(p)) return;
     const e = S.evals[p.ply + 1]; if (!e) return;
     const cx = x(p.ply + 1), cy = y(wc(forWhite(e.score, g.positions[p.ply + 1].split(' ')[1])));
-    h += `<g class="mk" data-i="${i}"><title>${TYPE_LABEL(p)}: ${moveLabel(p.played)}</title><circle cx="${cx}" cy="${cy}" r="${i === S.current ? 7 : 5}" fill="${col[p.type]}" stroke="var(--surface)" stroke-width="2"/></g>`;
+    const ring = i === S.current ? `<circle cx="${cx}" cy="${cy}" r="11" fill="none" stroke="var(--accent)" stroke-width="2"/>` : ''; // the puzzle on the board
+    h += `<g class="mk" data-i="${i}"><title>${TYPE_LABEL(p)}: ${moveLabel(p.played)}</title>${ring}<circle cx="${cx}" cy="${cy}" r="${i === S.current ? 7 : 5}" fill="${col[p.type]}" stroke="var(--surface)" stroke-width="2"/></g>`;
   });
   svg.innerHTML = h;
 }
@@ -1064,7 +1113,11 @@ function updateNav() {
   $('#tcount').textContent = vi >= 0 ? `Puzzle ${vi + 1} of ${vis.length}` : '';
   $('#bPrev').disabled = vi <= 0; $('#bNext').disabled = !vis.length || vi === vis.length - 1;
   $('#bHint').disabled = !has || T.mode !== 'play'; $('#bSol').disabled = !has; $('#bRetry').disabled = !has; $('#bFen').disabled = !T.chess;
+  $('#bNext').classList.toggle('primary', T.mode === 'done' || T.mode === 'show'); // while you play, the board is the main action
 }
+// The trainer is sticky. When it is taller than the window, a negative top lets its bottom (the line and its buttons) come into view.
+function fitSticky() { const tr = $('.trainer'); tr.style.top = Math.min(16, innerHeight - tr.offsetHeight - 16) + 'px' }
+new ResizeObserver(fitSticky).observe($('.trainer')); addEventListener('resize', fitSticky);
 $('#bNext').onclick = () => { T.userTouched = true; const vis = visible(); const vi = T.p ? vis.indexOf(T.p) : -1; if (vis[vi + 1]) loadPuzzle(S.puzzles.indexOf(vis[vi + 1])) };
 $('#bPrev').onclick = () => { T.userTouched = true; const vis = visible(); const vi = vis.indexOf(T.p); if (vi > 0) loadPuzzle(S.puzzles.indexOf(vis[vi - 1])) };
 $('#bRetry').onclick = () => { T.userTouched = true; loadPuzzle(S.current) };

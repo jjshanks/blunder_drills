@@ -275,8 +275,13 @@ test('exports one valid Lichess study chapter per puzzle', async ({ page }) => {
 
 test('analyzes a pasted game that ends in checkmate and remembers it after reload', async ({ page }) => {
   await openAnalyzed(page);
+  await expect(page.locator('#gsum')).toHaveText('Alex Sample vs Sam Example · 1-0 · 44 moves');
+  await expect(page.locator('#src')).toBeHidden(); // the PGN folds away while you train
+  await page.locator('#setup summary').click();
   await page.locator('#src').fill('1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0');
   await page.locator('#run').click();
+  await expect(page.locator('#src')).toBeHidden();
+  await expect(page.locator('#gsum')).toHaveText('White vs Black · 1-0 · 4 moves');
   await expect(page.locator('#ptext')).toHaveText(/^Done · 8 positions/, { timeout: 60_000 });
   await expect(page.locator('.pitem .mv')).toContainText(['3… Nf6']);
   await expect(page.locator('#evalNow')).toHaveText('Final 1-0');
@@ -284,8 +289,18 @@ test('analyzes a pasted game that ends in checkmate and remembers it after reloa
   await expect(page.locator('#src')).toHaveValue(/Qxf7#/);
 });
 
+test('fits the board and the puzzle actions in a short desktop window', async ({ page }) => {
+  await page.setViewportSize({ width: 1265, height: 712 });
+  await openAnalyzed(page);
+  for (const s of ['#prompt', '#bframe', '#bHint', '#bNext']) await expect(page.locator(s)).toBeInViewport({ ratio: 1 });
+  await expect(page.locator('#bNext')).not.toHaveClass(/primary/); // Next is the main action only after the puzzle
+  await page.locator('#bSol').click();
+  await expect(page.locator('#bNext')).toHaveClass(/primary/);
+});
+
 test('shows an error for a bare FEN', async ({ page }) => {
   await page.goto('/');
+  await page.locator('#setup summary').click();
   await page.locator('#src').fill('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
   await page.locator('#run').click();
   await expect(page.locator('#err')).toBeVisible();
