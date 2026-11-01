@@ -53,6 +53,16 @@ test('material counts White minus Black in pawns', async ({ page }) => {
   expect(r).toEqual([0, 9, -8]);
 });
 
+test('studyPgn escapes quotes and backslashes in player names', async ({ page }) => {
+  // Checks the text only: chess.js 1.4.0 cannot read \" inside a tag, so it cannot round-trip this.
+  const tags = await run(page, D => {
+    D.state.game = { headers: { White: 'Ann "The Rook" Lee', Black: 'C:\\chess' } };
+    D.state.puzzles = [{ fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', pv: ['e2e4'], type: 'blunder', color: 'w', played: { color: 'w', moveNo: 1, san: 'a3' } }];
+    return D.studyPgn().split('\n').filter(l => /^\[(White|Black) /.test(l));
+  });
+  expect(tags).toEqual(['[White "Ann \\"The Rook\\" Lee"]', '[Black "C:\\\\chess"]']);
+});
+
 test.describe('PGN input', () => {
   test('cleanPgn removes comments, variations, NAGs and move annotations', async ({ page }) => {
     const r = await run(page, D => D.cleanPgn('[White "A"]\n\n1. e4!? {best by test} e5 (1... c5 (1... e6)) 2. Nf3 $1 ; line comment\nNc6?? *'));
@@ -64,11 +74,11 @@ test.describe('PGN input', () => {
       const g = D.parseInput(document.querySelector('#src').value);
       return { moves: g.moves.length, positions: g.positions.length, white: g.headers.White, first: g.moves[0], second: g.moves[1] };
     });
-    expect(r.moves).toBe(89);
-    expect(r.positions).toBe(90);
+    expect(r.moves).toBe(87);
+    expect(r.positions).toBe(88);
     expect(r.white).toBe('Alex Sample');
-    expect(r.first).toEqual({ san: 'Nc3', from: 'b1', to: 'c3', uci: 'b1c3', color: 'w', moveNo: 1 });
-    expect(r.second).toMatchObject({ san: 'Nf6', color: 'b', moveNo: 1 });
+    expect(r.first).toEqual({ san: 'e4', from: 'e2', to: 'e4', uci: 'e2e4', color: 'w', moveNo: 1 });
+    expect(r.second).toMatchObject({ san: 'e5', color: 'b', moveNo: 1 });
   });
 
   test('parseInput honours a [FEN] start position and records promotions', async ({ page }) => {

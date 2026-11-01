@@ -10,12 +10,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Blunder Drills</title>
-<meta name="description" content="Paste a chess game or position. Stockfish runs in your browser, finds the blunders and missed mates, and turns each one into a puzzle.">
+<meta name="description" content="Paste a chess game in PGN format. Stockfish runs in your browser, finds the blunders and missed mates, and turns each one into a puzzle.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <script type="importmap">{ "integrity": { "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js": "sha384-A9KE46F70Ao1BUdhGSxgP0+9OhPjBrpf6gsBehqG12SbeKbFWnO7bwtNT68I4xKh" } }</script>
-<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 <style>
 /* Layout: two-column workbench — game input, eval graph and puzzle list on the left; a sticky training board on the right. Stacks on phones. */
 :root {
@@ -30,8 +29,9 @@
   --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --r: 10px;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+@media (prefers-color-scheme: dark) { :root {
   --bg: #111613; --surface: #19201c; --ink: #e5ece7; --muted: #98a69e; --line: #2b3530;
   --accent: #6cc19f; --accent-ink: #0d1a14; --accent-soft: #1f3a2f;
   --sq-l: #c9d1bd; --sq-d: #5f7d69; --frame: #0b100d; --frame-ink: #8fa196;
@@ -40,20 +40,12 @@
   --good: #5fd39a; --good-soft: #17352a; --bad: #f2867a; --bad-soft: #3d1c19;
   --adv-w: #dfe6e1; --adv-b: #0b0f0d;
   color-scheme: dark } }
-:root[data-theme="dark"] {
-  --bg: #111613; --surface: #19201c; --ink: #e5ece7; --muted: #98a69e; --line: #2b3530;
-  --accent: #6cc19f; --accent-ink: #0d1a14; --accent-soft: #1f3a2f;
-  --sq-l: #c9d1bd; --sq-d: #5f7d69; --frame: #0b100d; --frame-ink: #8fa196;
-  --dot: rgba(10, 20, 15, .38);
-  --mate: #b48cf0; --mate-soft: #2c2140; --blunder: #f08a5d; --blunder-soft: #3b2219; --mistake: #e0b450; --mistake-soft: #362c14;
-  --good: #5fd39a; --good-soft: #17352a; --bad: #f2867a; --bad-soft: #3d1c19;
-  --adv-w: #dfe6e1; --adv-b: #0b0f0d;
-  color-scheme: dark }
 
 * { box-sizing: border-box }
 [hidden] { display: none !important }
-body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 48px }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: calc(28px + env(safe-area-inset-top, 0px)); padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px)) }
 .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px }
 button, select, textarea { font: inherit; color: inherit }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
@@ -325,7 +317,7 @@ async function bootBuild(b) {
   Engine.name = b.name;
 }
 const Engine = {
-  w: null, queue: [], cur: null, name: '',
+  w: null, queue: [], cur: null, name: '', dead: false,
   status(text, cls) { $('#engineText').textContent = text; $('#engine').className = 'engine ' + (cls || '') },
   start() {
     this.ready = bootBuild(SF_BUILDS[0])
@@ -343,15 +335,26 @@ const Engine = {
         const line = String(e.data);
         if (line === 'uciok') { w.postMessage('setoption name Hash value 32'); w.postMessage('isready') }
         else if (line === 'readyok') {
-          clearTimeout(t); w.onerror = null; this.w = w;
+          clearTimeout(t); this.w = w;
+          w.onerror = () => this.fail();
           w.onmessage = ev => this.line(String(ev.data)); res();
         }
       };
       w.postMessage('uci');
     });
   },
+  // Resolves to { score, pv, best, depth }, or to null if the engine has stopped working.
   analyse(fen, depth, urgent) {
+    if (this.dead) return Promise.resolve(null);
     return new Promise(res => { const j = { fen, depth, res, info: null }; urgent ? this.queue.unshift(j) : this.queue.push(j); this.pump() });
+  },
+  // The worker crashed after start-up. Tell the user, and answer every waiting request with null.
+  fail() {
+    this.dead = true; this.w.terminate(); this.w = null;
+    this.status('Engine stopped working', 'err');
+    $('#err').textContent = 'Stockfish stopped working. Reload the page to try again.'; $('#err').hidden = false;
+    for (const j of [this.cur, ...this.queue]) if (j) j.res(null);
+    this.cur = null; this.queue = [];
   },
   pump() {
     if (this.cur || !this.w || !this.queue.length) return;
@@ -446,6 +449,7 @@ async function analyze() {
     else if (c.isStalemate() || c.isInsufficientMaterial()) ev = { score: { cp: 0 }, pv: [], best: null };
     else ev = await Engine.analyse(fen, depth);
     if (run !== S.run) return;
+    if (!ev) return setProgress(k / n, `Stopped at position ${k + 1} of ${n}: the engine stopped working.`);
     S.evals[k] = ev;
     refreshPuzzles(); drawChart();
   }
@@ -588,7 +592,9 @@ function setFeedback(kind, text, line, note) {
   if (note) { const s = document.createElement('span'); s.className = 'note'; s.textContent = note; el.appendChild(s) }
 }
 function renderBoard() {
-  const el = $('#board'); el.innerHTML = '';
+  const el = $('#board');
+  const focusSq = el.contains(document.activeElement) ? document.activeElement.dataset.sq : null; // keep keyboard focus
+  el.innerHTML = '';
   if (!T.chess) return;
   const B = T.chess.board();
   T.legal = T.mode === 'play' ? T.chess.moves({ verbose: true }) : [];
@@ -616,6 +622,7 @@ function renderBoard() {
   const fl = T.orient === 'w' ? FILES.split('') : FILES.split('').reverse();
   $('#files').innerHTML = fl.map(f => `<span>${f}</span>`).join('');
   $('#ranks').innerHTML = (T.orient === 'w' ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8]).map(r => `<span>${r}</span>`).join('');
+  if (focusSq) el.querySelector(`.sq[data-sq="${focusSq}"]`).focus({ preventScroll: true });
   if (T.p && T.mode === 'play' && T.chess.fen() === T.p.fen) el.appendChild(arrowEl(T.p.played.from, T.p.played.to));
   if (T.anim) { slide(T.anim); T.anim = null }
 }
@@ -700,6 +707,8 @@ function askPromo(ms) {
   }
 }
 const uciOf = m => m.from + m.to + (m.promotion || '');
+// Play a UCI move such as 'e7e8q' on a chess.js game. Returns the move, or null if it is illegal.
+function playUci(c, u) { try { return c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }) } catch { return null } }
 async function userMove(m) {
   const p = T.p, tok = T.token;
   const mv = T.chess.move({ from: m.from, to: m.to, promotion: m.promotion });
@@ -709,12 +718,13 @@ async function userMove(m) {
     setFeedback('info', 'Checking your move…');
     const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
     if (tok !== T.token) return;
+    if (!r) return engineGone();
     const ours = neg(r.score);
     if (isMate(ours) && ours.mate > 0 && ours.mate <= T.left - 1 && r.best) {
       T.left--;
       setFeedback('good', `Good. ${mv.san} keeps the mate on. Mate in ${T.left} now.`);
       await wait(450); if (tok !== T.token) return;
-      const reply = T.chess.move({ from: r.best.slice(0, 2), to: r.best.slice(2, 4), promotion: r.best[4] });
+      const reply = playUci(T.chess, r.best);
       T.last = [reply.from, reply.to]; T.anim = T.last; T.mode = 'play'; renderBoard();
       setFeedback('good', `Opponent replies ${reply.san}. Mate in ${T.left}.`);
     } else return wrong(mv.san, ours, isMate(ours) && ours.mate > 0 ? `That still mates, but in ${ours.mate}, not ${T.left - 1}.` : 'That lets the king escape.');
@@ -723,11 +733,13 @@ async function userMove(m) {
     setFeedback('info', 'Checking your move…');
     const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
     if (tok !== T.token) return;
+    if (!r) return engineGone();
     const ours = neg(r.score);
     if (wc(ours) >= wc(p.before) - 0.1) return solved(`${mv.san} works too (${fmt(forWhite(ours, p.color))}).`, [uciOf(mv), ...r.pv].slice(0, 6), ours);
     wrong(mv.san, ours, p.played && uciOf(mv) === p.played.uci ? 'That is the move from the game.' : 'Still too costly.');
   }
 }
+const engineGone = () => setFeedback('bad', 'The engine stopped working, so this move cannot be checked. Reload the page to try again.');
 // line: UCI moves from the puzzle position. For a mate puzzle it is the moves played, so the board is at
 // its end. Otherwise it starts with the solving move, which is already on the board.
 // score: the engine's score of that line, for the side to move in the puzzle.
@@ -775,7 +787,7 @@ function lineGo(i) {
   const L = T.line, p = T.p; if (!L) return;
   i = Math.max(0, Math.min(L.moves.length, i));
   const c = new Chess(p.fen); let last = p.prev ? [p.prev.from, p.prev.to] : null;
-  for (let k = 0; k < i; k++) { const u = L.moves[k], m = c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }); last = [m.from, m.to] }
+  for (let k = 0; k < i; k++) { const m = playUci(c, L.moves[k]); last = [m.from, m.to] }
   T.anim = i === L.i + 1 ? last : null; // slide the piece only on a single step forward
   L.i = i; T.chess = c; T.last = last; T.sel = null; T.hint = null;
   renderBoard(); renderStepper();
@@ -827,8 +839,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 function pvParts(fen, pv) {
   const g = new Chess(fen), parts = []; let [, turn, , , , fm] = fen.split(' '); let no = +fm;
   for (let j = 0; j < pv.length; j++) {
-    const u = pv[j]; let m;
-    try { m = g.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }) } catch { break }
+    const m = playUci(g, pv[j]); if (!m) break;
     const label = turn === 'w' ? `${no}. ${m.san}` : `${no}... ${m.san}`;
     parts.push({ label, text: turn === 'w' || j === 0 ? label : m.san });
     if (turn === 'b') no++;
@@ -848,7 +859,6 @@ const TAC_MOVES = 3, TAC_PAYOFF = 6, TAC_GAIN = 2;
 const worth = t => t === 'k' ? 100 : VALUE[t];
 const sqXY = s => [s.charCodeAt(0) - 97, +s[1] - 1];
 const SLIDER = { b: 1, r: 1, q: 1 };
-function playUci(c, u) { try { return c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }) } catch { return null } }
 function piecesOf(c, color) { const out = []; for (const row of c.board()) for (const q of row) if (q && q.color === color) out.push(q); return out }
 // The enemy pieces that the piece on sq attacks.
 const hitsFrom = (c, sq, me) => piecesOf(c, me === 'w' ? 'b' : 'w').filter(q => c.attackers(q.square, me).includes(sq));
@@ -999,7 +1009,7 @@ $('#bHint').onclick = () => {
   if (fen === p.fen && p.best) return give(p.best, p.pv);
   setFeedback('info', 'Thinking…');
   const tok = T.token;
-  Engine.analyse(fen, Math.max(12, S.analyzedDepth), true).then(r => { if (tok !== T.token || !r.best) return; give(r.best, r.pv) });
+  Engine.analyse(fen, Math.max(12, S.analyzedDepth), true).then(r => { if (tok !== T.token) return; if (!r) return engineGone(); if (r.best) give(r.best, r.pv) });
 };
 // The second hint names the motif of the better line. With no motif there, it names what the game move allowed.
 function secondHint(p, fen, pv) {
@@ -1016,12 +1026,13 @@ $('#bFen').onclick = async () => {
   const fen = T.p ? T.p.fen : T.chess.fen();
   if (!await copyText(fen, $('#bFen'), 'Copied')) { $('#copyOut').value = fen; $('#copyBox').hidden = false; $('#copyOut').select() }
 };
+const pgnTag = (name, value) => `[${name} "${String(value).replace(/[\\"]/g, '\\$&')}"]`; // PGN escapes \ and "
 function studyPgn() {
   const h = S.game.headers || {};
   return visible().map((p, i) => {
     const line = pvSan(p.fen, p.type === 'mate' ? p.pv : p.pv.slice(0, 5));
     const ctx = `{In the game: ${moveLabel(p.played).replace('…', '...')}} `;
-    return [`[Event "Puzzle ${i + 1}: ${TYPE_LABEL(p)} (${sideName(p.color)} to move)"]`, `[White "${h.White || '?'}"]`, `[Black "${h.Black || '?'}"]`, `[Result "*"]`, `[SetUp "1"]`, `[FEN "${p.fen}"]`, '', `${ctx}${line} *`].join('\n');
+    return [pgnTag('Event', `Puzzle ${i + 1}: ${TYPE_LABEL(p)} (${sideName(p.color)} to move)`), pgnTag('White', h.White || '?'), pgnTag('Black', h.Black || '?'), pgnTag('Result', '*'), pgnTag('SetUp', '1'), pgnTag('FEN', p.fen), '', `${ctx}${line} *`].join('\n');
   }).join('\n\n\n');
 }
 $('#copyAll').onclick = async () => {

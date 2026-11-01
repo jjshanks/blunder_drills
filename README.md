@@ -36,12 +36,15 @@ Then run:
 npm test
 ```
 
-- `tests/logic.spec.js` tests the pure functions: scores, PGN parsing and
-  puzzle detection. It blocks the engine download.
+- `tests/logic.spec.js` tests the pure functions: scores, PGN parsing, puzzle
+  detection and the tactics checker. It blocks the engine download.
 - `tests/app.spec.js` drives the page with the real engine. It needs network
-  access to unpkg.
+  access to unpkg and jsDelivr.
 
 The page exposes its pure functions on `window.BlunderDrills` for these tests.
+
+GitHub Actions runs `npm test` on each push to `main` and on each pull request
+(`.github/workflows/test.yml`).
 
 ## Publish (later)
 

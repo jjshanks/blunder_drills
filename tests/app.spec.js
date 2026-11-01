@@ -1,7 +1,7 @@
 // End-to-end tests: the real page with the real Stockfish engine from unpkg (needs network).
 import { test, expect } from '@playwright/test';
 
-const SAMPLE_PUZZLES = ['5… Be7', '13. Qb5+', '13… Bd7', '14. Qb4', '14… Nxa4', '17. Qa6', '24… Nxe2+'];
+const SAMPLE_PUZZLES = ['20… Rb8', '29. Rd2', '32… Kf8', '33. d5', '36… Rd7', '41… Rh5'];
 
 async function openAnalyzed(page, url = '/') {
   await page.goto(url);
@@ -36,11 +36,11 @@ async function expectGameMoveArrow(page, p) {
 
 test('analyzes the sample game into the expected puzzles', async ({ page }) => {
   await openAnalyzed(page);
-  await expect(page.locator('#summary')).toHaveText(/^7 puzzles: 1 missed mate, 6 blunders\./);
+  await expect(page.locator('#summary')).toHaveText(/^6 puzzles: 1 missed mate, 5 blunders\./);
   await expect(page.locator('.pitem .mv')).toHaveText(SAMPLE_PUZZLES);
   await expect(page.locator('.pitem .chip.mate')).toHaveText(['Mate in 2']);
-  await expect(page.locator('#chart .mk')).toHaveCount(7);
-  await expect(page.locator('#tcount')).toHaveText('Puzzle 1 of 7');
+  await expect(page.locator('#chart .mk')).toHaveCount(6);
+  await expect(page.locator('#tcount')).toHaveText('Puzzle 1 of 6');
 });
 
 test('solves a blunder puzzle on the first try, then steps through the engine line', async ({ page }) => {
@@ -85,25 +85,25 @@ test('solves a blunder puzzle on the first try, then steps through the engine li
 
 test('compares the better line with the game line', async ({ page }) => {
   await openAnalyzed(page);
-  const p = await current(page); // 5... Be7, -1.7 -> +0.3
+  const p = await current(page); // 20... Rb8, +0.1 -> +2.9
   await play(page, p.best);
   const best = page.locator('#lWhich button[data-k="best"]'), game = page.locator('#lWhich button[data-k="game"]');
   await expect(best).toHaveAttribute('aria-pressed', 'true');
-  await expect(best).toContainText('Better: 5... ');
-  await expect(page.locator('#lSum')).toContainText('Engine eval for this line: −1.7, Black is better');
+  await expect(best).toContainText('Better: 20... ');
+  await expect(page.locator('#lSum')).toContainText('Engine eval for this line: +0.1, about equal');
   await expect(page.locator('#lSum')).toContainText('Material here: ');
   await expect(page.locator('#lLine .cur')).toHaveCount(1);
   await page.keyboard.press('ArrowRight'); // better line now at move 2
 
   await game.click();
   await expect(game).toHaveAttribute('aria-pressed', 'true');
-  await expect(game).toHaveText('Game: 5... Be7');
-  await expect(page.locator('#lSum')).toContainText('Engine eval for this line: +0.3, White is better');
+  await expect(game).toHaveText('Game: 20... Rb8');
+  await expect(page.locator('#lSum')).toContainText('Engine eval for this line: +2.9, White is better');
   await expect(page.locator('#lPos')).toHaveText(/^Start · /);
   await expectBoardAt(page, p, [], 0);
   await page.keyboard.press('ArrowRight');
   await expectBoardAt(page, p, [p.played], 1);
-  await expect(page.locator('#lLine .cur')).toHaveText('5... Be7');
+  await expect(page.locator('#lLine .cur')).toHaveText('20... Rb8');
 
   await best.click(); // each line keeps its place
   await expectBoardAt(page, p, p.pv, 2);
@@ -136,7 +136,7 @@ test('rejects the game move, resets the board, then counts a later solve as a re
 test('plays out the missed mate in 2 against the engine', async ({ page }) => {
   await openAnalyzed(page);
   await page.locator('.pitem', { hasText: 'Mate in 2' }).click();
-  await expect(page.locator('#prompt')).toHaveText('Black to move. Mate in 2.');
+  await expect(page.locator('#prompt')).toHaveText('White to move. Mate in 2.');
   await play(page, (await current(page)).best);
   await expect(page.locator('#fb')).toContainText('Opponent replies');
   const mate = await page.evaluate(() => {
@@ -183,33 +183,33 @@ test('Show solution marks the puzzle as revealed and opens the line at its start
 
 test('the second hint names the tactic, and the solution explains it', async ({ page }) => {
   await openAnalyzed(page);
-  await page.locator('.pitem .mv', { hasText: '14… Nxa4' }).click();
+  await page.locator('.pitem .mv', { hasText: '33. d5' }).click();
   const p = await current(page);
   await page.locator('#bHint').click();
   await expect(page.locator('#fb')).toHaveText('Hint: move the highlighted piece. Press Hint again for the idea.');
   await expect(page.locator(`.sq.hint[data-sq="${p.best.slice(0, 2)}"]`)).toHaveCount(1);
   await page.locator('#bHint').click();
-  await expect(page.locator('#fb')).toHaveText('Hint: move the highlighted piece. Look for a discovered attack.');
+  await expect(page.locator('#fb')).toHaveText('Hint: move the highlighted piece. Look for a queen fork.');
   await page.locator('#bSol').click();
-  await expect(page.locator('#fb .note')).toHaveText('The idea: 14... Nd3+ gives check and uncovers an attack by the bishop on e7 on the queen on b4, and wins the queen.');
+  await expect(page.locator('#fb .note')).toHaveText('The idea: 33. Qe8+ forks the king and the rook on d8, and leads to mate.');
 });
 
 test('the second hint names what the game move allowed when the better move is not a tactic', async ({ page }) => {
   await openAnalyzed(page);
-  await page.locator('.pitem .mv', { hasText: '17. Qa6' }).click();
+  await page.locator('.pitem .mv', { hasText: '20… Rb8' }).click();
   await page.locator('#bHint').click();
   await page.locator('#bHint').click();
-  await expect(page.locator('#fb')).toHaveText('Hint: move the highlighted piece. The game move allowed a free capture. Find a move that stops it.');
+  await expect(page.locator('#fb')).toHaveText('Hint: move the highlighted piece. The game move allowed a knight fork. Find a move that stops it.');
   await page.locator('#bSol').click();
-  await expect(page.locator('#fb .note')).toHaveText('The game move, 17. Qa6, allowed 17... Qxa6, which takes the queen on a6 for free.');
+  await expect(page.locator('#fb .note')).toHaveText('The game move, 20... Rb8, allowed 21. Nc6, which forks the queen on d8 and the rook on b8, and wins the rook.');
 });
 
 test('filters puzzles by player', async ({ page }) => {
   await openAnalyzed(page);
   await page.getByRole('button', { name: 'Alex Sample (White)' }).click();
-  await expect(page.locator('.pitem .mv')).toHaveText(['13. Qb5+', '14. Qb4', '17. Qa6']);
+  await expect(page.locator('.pitem .mv')).toHaveText(['29. Rd2', '33. d5']);
   await page.getByRole('button', { name: 'Sam Example (Black)' }).click();
-  await expect(page.locator('.pitem')).toHaveCount(4);
+  await expect(page.locator('.pitem .mv')).toHaveText(['20… Rb8', '32… Kf8', '36… Rd7', '41… Rh5']);
 });
 
 test('exports one valid Lichess study chapter per puzzle', async ({ page }) => {
@@ -217,7 +217,7 @@ test('exports one valid Lichess study chapter per puzzle', async ({ page }) => {
   const chapters = await page.evaluate(() => window.BlunderDrills.studyPgn().split('\n\n\n').map(ch => {
     try { new window.BlunderDrills.Chess().loadPgn(ch); return true } catch { return false }
   }));
-  expect(chapters).toHaveLength(7);
+  expect(chapters).toHaveLength(6);
   expect(chapters.every(Boolean)).toBe(true);
 });
 
@@ -240,6 +240,37 @@ test('shows an error for a bare FEN', async ({ page }) => {
   await expect(page.locator('#err')).toContainText('single position (FEN)');
 });
 
+test('keeps keyboard focus on the board, so a move can be made with the keyboard', async ({ page }) => {
+  await openAnalyzed(page);
+  const p = await current(page);
+  const from = p.best.slice(0, 2), to = p.best.slice(2, 4);
+  await page.locator(`.sq[data-sq="${from}"]`).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator(`.sq[data-sq="${from}"]`)).toBeFocused();
+  await expect(page.locator(`.sq.sel[data-sq="${from}"]`)).toHaveCount(1);
+  await page.locator(`.sq[data-sq="${to}"]`).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#fb')).toContainText('Solved.');
+  await expect(page.locator(`.sq[data-sq="${to}"]`)).toBeFocused();
+});
+
+test('stops cleanly and says so when the engine crashes during analysis', async ({ page }) => {
+  // Make the real worker crash at its third search: stop it and fire an error event.
+  await page.addInitScript(() => {
+    const Real = window.Worker; let searches = 0;
+    window.Worker = class extends Real {
+      postMessage(m) {
+        if (String(m).startsWith('go') && ++searches === 3) { this.terminate(); setTimeout(() => this.onerror && this.onerror(new ErrorEvent('error'))); return }
+        super.postMessage(m);
+      }
+    };
+  });
+  await page.goto('/');
+  await expect(page.locator('#engineText')).toHaveText('Engine stopped working', { timeout: 60_000 });
+  await expect(page.locator('#err')).toHaveText('Stockfish stopped working. Reload the page to try again.');
+  await expect(page.locator('#ptext')).toHaveText(/^Stopped at position 3 of \d+: the engine stopped working\.$/);
+});
+
 test('falls back to the asm.js engine when the WebAssembly build fails', async ({ page }) => {
   await page.route('**/stockfish-18-lite-single.js', route => route.fulfill({ status: 404 }));
   await page.goto('/');
@@ -255,5 +286,5 @@ test('reports an engine that cannot load', async ({ page }) => {
 
 test('runs when index.html is opened from disk', async ({ page }) => {
   await openAnalyzed(page, new URL('../index.html', import.meta.url).href);
-  await expect(page.locator('.pitem')).toHaveCount(7);
+  await expect(page.locator('.pitem')).toHaveCount(6);
 });
