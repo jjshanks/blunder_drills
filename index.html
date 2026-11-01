@@ -87,7 +87,7 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 
 .chart { width: 100%; height: auto; display: block; overflow: visible }
 .chart text { font-family: var(--f-mono); font-size: 10px; fill: var(--muted) }
-.chart .mk { cursor: pointer }
+.chart { cursor: pointer } /* a click opens the whole game at that move */
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted) }
 .legend b { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0 }
 
@@ -122,16 +122,17 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .ranks { grid-template-rows: repeat(8, 1fr); place-items: center }
 .files { grid-column: 2; grid-template-columns: repeat(8, 1fr); place-items: center }
 .board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr)); aspect-ratio: 1; min-width: 0; border-radius: 3px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0,0,0,.35); user-select: none; -webkit-user-select: none; touch-action: manipulation }
-.board { position: relative; touch-action: none } /* touch-action: drag pieces without scrolling the page */
+.board { position: relative; touch-action: none; --arrow: #d2311c } /* touch-action: drag pieces without scrolling the page */
 .sq.mine { cursor: grab }
 .pc.lifted { opacity: .3 }
 .pc.ghost { position: fixed; left: 0; top: 0; z-index: 50; cursor: grabbing }
-.arrow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; opacity: .8; --arrow: #d2311c } /* same red in both themes: the board colors barely change */
+.arrow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; opacity: .8 } /* --arrow on .board: the same red in both themes, as the board colors barely change */
 .sq { position: relative; border: 0; padding: 0; margin: 0; display: block; cursor: pointer; min-width: 0; min-height: 0; -webkit-tap-highlight-color: transparent }
 .sq.l { background-color: var(--sq-l) } .sq.d { background-color: var(--sq-d) }
 .sq.last { background-image: linear-gradient(var(--hl-last), var(--hl-last)) }
 .sq.sel { background-image: linear-gradient(var(--hl-sel), var(--hl-sel)) }
 .sq.chk { background-image: radial-gradient(circle, rgba(232, 40, 30, 1) 0, rgba(232, 40, 30, .55) 38%, rgba(232, 40, 30, 0) 72%) }
+.sq.tgt::before { content: ""; position: absolute; inset: 6%; border-radius: 50%; box-shadow: 0 0 0 0.6cqi var(--arrow); z-index: 3; pointer-events: none } /* a tactic's target */
 .sq.hint::before { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 0.75cqi var(--mate); z-index: 2; pointer-events: none }
 .sq.dot::after { content: ""; position: absolute; left: 35%; top: 35%; width: 30%; height: 30%; border-radius: 50%; background: var(--dot); z-index: 2 }
 .sq.cap::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, transparent 0 66%, var(--dot) 67%); z-index: 2 }
@@ -152,6 +153,7 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .fb.info { border-left-color: var(--accent) }
 .fb .line { font-family: var(--f-mono); font-size: 13px; display: block; margin-top: 4px; overflow-wrap: anywhere }
 .fb .note { display: block; margin-top: 6px }
+.fb .mvlink { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer }
 .copyout { width: 100%; min-height: 120px; font-family: var(--f-mono); font-size: 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); padding: 10px }
 .stepper { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px }
 .stepper .seg { justify-self: start }
@@ -227,6 +229,7 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
         <div class="seg" id="lWhich" role="group" aria-label="Line to show">
           <button type="button" data-k="best"></button>
           <button type="button" data-k="game"></button>
+          <button type="button" data-k="whole">Whole game</button>
         </div>
         <p class="lline" id="lLine"></p>
         <p class="lsum" id="lSum"></p>
@@ -533,9 +536,10 @@ function renderList() {
   }
   $('#copyAll').disabled = !vis.length;
 }
+const CHART = { W: 600, H: 150, padL: 34, padR: 8, padT: 8, padB: 22 }; // the chart's viewBox and plot margins
 function drawChart() {
   const svg = $('#chart'); const g = S.game;
-  const W = 600, H = 150, padL = 34, padR = 8, padT = 8, padB = 22;
+  const { W, H, padL, padR, padT, padB } = CHART;
   const n = g ? g.positions.length : 0;
   const x = k => padL + (n > 1 ? k / (n - 1) : 0.5) * (W - padL - padR);
   const y = v => padT + (1 - v) / 2 * (H - padT - padB);
@@ -553,6 +557,10 @@ function drawChart() {
     const f = g.positions[k].split(' ');
     if (f[1] === 'w' && +f[5] % 10 === 0) h += `<text x="${x(k)}" y="${H - 6}" text-anchor="middle">${f[5]}</text><line x1="${x(k)}" x2="${x(k)}" y1="${H - padB}" y2="${H - padB + 4}" stroke="var(--muted)"/>`;
   }
+  if (g && T.line && T.line.whole) { // where the whole-game line is, with a halo that shows on the dark area too
+    const cx = x(T.line.i);
+    h += `<line x1="${cx}" x2="${cx}" y1="${padT}" y2="${H - padB}" stroke="var(--surface)" stroke-width="4"/><line x1="${cx}" x2="${cx}" y1="${padT}" y2="${H - padB}" stroke="var(--accent)" stroke-width="2"/>`;
+  }
   const col = { mate: 'var(--mate)', blunder: 'var(--blunder)', mistake: 'var(--mistake)' };
   if (g) S.puzzles.forEach((p, i) => {
     if (!visible().includes(p)) return;
@@ -562,11 +570,18 @@ function drawChart() {
   });
   svg.innerHTML = h;
 }
-$('#chart').addEventListener('click', e => { const g = e.target.closest('.mk'); if (g) { T.userTouched = true; loadPuzzle(+g.dataset.i) } });
+$('#chart').addEventListener('click', e => {
+  if (!S.game) return;
+  T.userTouched = true;
+  const mk = e.target.closest('.mk'); if (mk) return loadPuzzle(+mk.dataset.i);
+  const { W, padL, padR } = CHART, r = $('#chart').getBoundingClientRect(), n = S.game.positions.length;
+  const f = ((e.clientX - r.left) / r.width * W - padL) / (W - padL - padR);
+  openWhole(Math.round(Math.max(0, Math.min(1, f)) * (n - 1)));
+});
 
 /* ---------------- trainer ---------------- */
 function showPosition(fen, lastMove) {
-  T.p = null; T.chess = new Chess(fen); T.orient = T.chess.turn(); T.sel = null; T.hint = null; T.mode = 'idle'; T.line = null; renderStepper();
+  T.p = null; T.chess = new Chess(fen); T.orient = T.chess.turn(); T.sel = null; T.hint = null; T.mode = 'idle'; T.line = null; T.lines = null; renderStepper();
   T.last = lastMove ? [lastMove.from, lastMove.to] : null;
   $('#tchip').className = 'chip best'; $('#tchip').textContent = 'Position'; $('#tcount').textContent = '';
   $('#prompt').textContent = 'Finding puzzles…'; $('#ctx').textContent = ' ';
@@ -576,7 +591,7 @@ function showPosition(fen, lastMove) {
 function loadPuzzle(idx) {
   const p = S.puzzles[idx]; if (!p) return;
   S.current = idx; T.p = p; T.token++;
-  T.chess = new Chess(p.fen); T.orient = p.color; T.sel = null; T.hint = null; T.hintAt = null; T.pending = null; $('#promo').hidden = true; T.line = null; renderStepper();
+  T.chess = new Chess(p.fen); T.orient = p.color; T.sel = null; T.hint = null; T.hintAt = null; T.pending = null; $('#promo').hidden = true; T.line = null; T.lines = null; renderStepper();
   T.last = p.prev ? [p.prev.from, p.prev.to] : null;
   T.mode = 'play'; T.left = p.type === 'mate' ? p.mateN : 1; T.firstTry = true;
   $('#tchip').className = 'chip ' + p.type; $('#tchip').textContent = TYPE_LABEL(p);
@@ -589,7 +604,15 @@ function loadPuzzle(idx) {
 function setFeedback(kind, text, line, note) {
   const el = $('#fb'); el.className = 'fb ' + kind; el.textContent = text;
   if (line) { const s = document.createElement('span'); s.className = 'line'; s.textContent = line; el.appendChild(s) }
-  if (note) { const s = document.createElement('span'); s.className = 'note'; s.textContent = note; el.appendChild(s) }
+  if (note && note.length) { // note: text, or parts from tacticNoteParts, where a move part becomes a link
+    const s = document.createElement('span'); s.className = 'note';
+    for (const x of [].concat(note)) {
+      if (typeof x === 'string') { s.append(x); continue }
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'mvlink'; b.textContent = x.label;
+      b.title = 'Show this move on the board'; b.onclick = () => showLine(x.k, x.i); s.appendChild(b);
+    }
+    el.appendChild(s);
+  }
 }
 function renderBoard() {
   const el = $('#board');
@@ -599,6 +622,8 @@ function renderBoard() {
   const B = T.chess.board();
   T.legal = T.mode === 'play' ? T.chess.moves({ verbose: true }) : [];
   const targets = T.sel ? T.legal.filter(m => m.from === T.sel) : [];
+  const tac = T.line && T.line.marks && T.line.marks[T.line.i]; // a tactic that starts with the move just played
+  const rings = new Set(tac ? tac.targets.map(q => q.square) : []);
   let checkSq = null;
   if (T.chess.inCheck()) { const t = T.chess.turn(); for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { const q = B[r][c]; if (q && q.type === 'k' && q.color === t) checkSq = FILES[c] + (8 - r) } }
   for (let row = 0; row < 8; row++) for (let col = 0; col < 8; col++) {
@@ -612,10 +637,12 @@ function renderBoard() {
     if (T.sel === sq) b.classList.add('sel');
     if (checkSq === sq) b.classList.add('chk');
     if (T.hint === sq) b.classList.add('hint');
+    if (rings.has(sq)) b.classList.add('tgt');
     const tg = targets.find(m => m.to === sq);
     if (tg) b.classList.add(pc ? 'cap' : 'dot');
     let label = sq;
     if (pc) { b.appendChild(pieceEl(pc.color, pc.type)); label += ' ' + sideName(pc.color) + ' ' + PNAME[pc.type]; if (T.mode === 'play' && T.p && pc.color === T.p.color && pc.color === T.chess.turn()) b.classList.add('mine') }
+    if (rings.has(sq)) label += ', target';
     b.setAttribute('aria-label', label);
     el.appendChild(b);
   }
@@ -624,20 +651,36 @@ function renderBoard() {
   $('#ranks').innerHTML = (T.orient === 'w' ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8]).map(r => `<span>${r}</span>`).join('');
   if (focusSq) el.querySelector(`.sq[data-sq="${focusSq}"]`).focus({ preventScroll: true });
   if (T.p && T.mode === 'play' && T.chess.fen() === T.p.fen) el.appendChild(arrowEl(T.p.played.from, T.p.played.to));
+  if (tac) { el.appendChild(arrowEl(tac.from, tac.to)); for (const [a, b] of tacticArrows(tac, T.chess)) el.appendChild(arrowEl(a, b, true)) }
   if (T.anim) { slide(T.anim); T.anim = null }
 }
-// Arrow for a move, drawn over the board in square units (viewBox 0 0 8 8).
-function arrowEl(from, to) {
+// Arrow for a move, drawn over the board in square units (viewBox 0 0 8 8). attack: a thin dashed arrow
+// for a tactic's line of attack, which stops short of the target so that its ring shows.
+function arrowEl(from, to, attack) {
   const xy = sq => { const f = FILES.indexOf(sq[0]), r = +sq[1] - 1; return T.orient === 'w' ? [f + .5, 7.5 - r] : [7.5 - f, r + .5] };
-  const [x1, y1] = xy(from), [x2, y2] = xy(to);
-  const len = Math.hypot(x2 - x1, y2 - y1), dx = (x2 - x1) / len, dy = (y2 - y1) / len;
-  const bx = x2 - dx * .45, by = y2 - dy * .45, w = .28; // arrowhead base and half-width
+  const [x1, y1] = xy(from), [tx, ty] = xy(to);
+  const len = Math.hypot(tx - x1, ty - y1), dx = (tx - x1) / len, dy = (ty - y1) / len;
+  const tip = attack ? .32 : 0, head = attack ? .34 : .45, w = attack ? .2 : .28; // arrowhead length and half-width
+  const x2 = tx - dx * tip, y2 = ty - dy * tip, bx = x2 - dx * head, by = y2 - dy * head;
   const s = document.createElementNS(SVGNS, 'svg');
-  s.setAttribute('class', 'arrow'); s.setAttribute('viewBox', '0 0 8 8'); s.setAttribute('aria-hidden', 'true');
+  s.setAttribute('class', attack ? 'arrow attack' : 'arrow'); s.setAttribute('viewBox', '0 0 8 8'); s.setAttribute('aria-hidden', 'true');
   s.dataset.from = from; s.dataset.to = to;
-  s.innerHTML = `<line x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}" style="stroke:var(--arrow)" stroke-width=".17" stroke-linecap="round"/>`
+  s.innerHTML = `<line x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}" style="stroke:var(--arrow)" stroke-width="${attack ? .09 : .17}" stroke-linecap="round"${attack ? ' stroke-dasharray=".22 .14"' : ''}/>`
     + `<polygon points="${x2},${y2} ${bx - dy * w},${by + dx * w} ${bx + dy * w},${by - dx * w}" style="fill:var(--arrow)"/>`;
   return s;
+}
+// The lines of attack of tactic t, as [from, to] squares, in position c (just after the tactic move).
+// A skewer or pin is one arrow through the front piece to the piece behind it.
+function tacticArrows(t, c) {
+  if (t.motif === 'hanging') return []; // the move arrow is the capture
+  if (t.motif === 'skewer' || t.motif === 'pin') return [[t.to, t.targets[1].square]];
+  const out = [];
+  for (const q of t.targets) {
+    const by = c.attackers(q.square, t.color);
+    const from = by.includes(t.to) ? t.to : t.via && by.includes(t.via.square) ? t.via.square : by[0];
+    if (from) out.push([from, q.square]);
+  }
+  return out;
 }
 function slide([from, to]) {
   const pcEl = $(`.sq[data-sq="${to}"] .pc`); if (!pcEl) return;
@@ -746,7 +789,7 @@ const engineGone = () => setFeedback('bad', 'The engine stopped working, so this
 function solved(msg, line, score) {
   const p = T.p; T.mode = 'done';
   if (!p.status || p.status === 'new') p.status = T.firstTry ? 'solved' : 'retry';
-  setFeedback('good', msg + ' Solved. Compare your line with the game line below.', null, tacticNotes(p, line));
+  setFeedback('good', msg + ' Solved. Compare your line with the game line below.', null, tacticNoteParts(p, line));
   openLines(line, score, p.type === 'mate' ? line.length : 1);
   renderList(); updateNav();
 }
@@ -767,30 +810,53 @@ function evalWords(s) { // s from White's point of view
   if (isMate(s)) return `${fmt(s)}, ${s.mate > 0 || s.won ? 'White' : 'Black'} mates`;
   return `${fmt(s)}, ` + (Math.abs(s.cp) < 30 ? 'about equal' : `${s.cp > 0 ? 'White' : 'Black'} is better`);
 }
-function makeLine(title, moves, score, i) {
-  const parts = pvParts(T.p.fen, moves);
-  return { title, moves: moves.slice(0, parts.length), parts, score: forWhite(score, T.p.color), i: Math.min(i, parts.length) };
+// marks: { [i]: tactic } draws a tactic on the board when the line is at move i, just after its first move.
+function makeLine(title, moves, score, i, marks) {
+  const p = T.p, parts = pvParts(p.fen, moves);
+  return { title, fen: p.fen, prev: p.prev, moves: moves.slice(0, parts.length), parts, score: forWhite(score, p.color), i: Math.min(i, parts.length), marks };
 }
-function openLines(best, score, at) {
-  const p = T.p;
-  T.lines = { best: makeLine('Better', best, score, at), game: makeLine('Game', [p.played.uci, ...(p.refute || [])].slice(0, 6), p.after, 0) };
+// The whole game from its start position, at move i. It has no single score: the summary shows the eval at each move.
+function wholeLine(i) {
+  const g = S.game, moves = g.moves.map(m => m.uci);
+  return { title: 'Whole game', whole: true, fen: g.positions[0], prev: null, moves, parts: pvParts(g.positions[0], moves), i };
+}
+// noteLine: the line that the feedback note describes, if it is longer than best.
+function openLines(best, score, at, noteLine = best) {
+  const p = T.p, t = findTactics(p.fen, noteLine), a = allowedTactic(p);
+  T.lines = {
+    best: makeLine('Better', best, score, at, t && { [t.ply + 1]: t }),
+    game: makeLine('Game', [p.played.uci, ...(p.refute || [])].slice(0, 6), p.after, 0, a && { [a.ply + 2]: a }), // +2: after the game move
+    whole: wholeLine(p.ply)
+  };
   showLine('best');
 }
-function showLine(k) {
+// Open the whole game at move i. If a puzzle is still unsolved, its other lines stay hidden, so they do not give away the answer.
+function openWhole(i) {
+  if (!T.lines) {
+    if (T.p && (T.mode === 'play' || T.mode === 'wait')) setFeedback('info', 'This is the whole game. To go back to the puzzle, click it in the list or press Retry.');
+    T.mode = 'show'; T.lines = { whole: wholeLine(i) };
+  }
+  showLine('whole', i); updateNav();
+}
+// i: go to that move and do not autoplay, as for a click on a move link.
+function showLine(k, i) {
+  if (!T.lines || !T.lines[k]) return;
   T.token++; // cancels engine checks and autoplay still running for this puzzle
   T.line = T.lines[k];
-  lineGo(T.line.i);
-  if (autoplayOn()) autoplay();
+  lineGo(i === undefined ? T.line.i : i);
+  if (i === undefined && autoplayOn() && !T.line.whole) autoplay();
+  drawChart();
 }
 $('#lWhich').addEventListener('click', e => { const b = e.target.closest('button'); if (b && T.lines) showLine(b.dataset.k) });
 function lineGo(i) {
-  const L = T.line, p = T.p; if (!L) return;
+  const L = T.line; if (!L) return;
   i = Math.max(0, Math.min(L.moves.length, i));
-  const c = new Chess(p.fen); let last = p.prev ? [p.prev.from, p.prev.to] : null;
+  const c = new Chess(L.fen); let last = L.prev ? [L.prev.from, L.prev.to] : null;
   for (let k = 0; k < i; k++) { const m = playUci(c, L.moves[k]); last = [m.from, m.to] }
   T.anim = i === L.i + 1 ? last : null; // slide the piece only on a single step forward
   L.i = i; T.chess = c; T.last = last; T.sel = null; T.hint = null;
   renderBoard(); renderStepper();
+  if (L.whole) drawChart();
 }
 function step(i) { T.token++; lineGo(i) } // a manual step stops autoplay
 async function autoplay() {
@@ -801,16 +867,17 @@ function renderStepper() {
   const L = T.line; $('#stepper').hidden = !L; if (!L) return;
   const n = L.moves.length;
   for (const b of $('#lWhich').children) {
-    const l = T.lines[b.dataset.k];
-    b.textContent = `${l.title}: ${l.parts.length ? l.parts[0].label : '…'}`; b.setAttribute('aria-pressed', String(l === L));
+    const l = T.lines[b.dataset.k]; b.hidden = !l; if (!l) continue;
+    b.textContent = l.whole ? l.title : `${l.title}: ${l.parts.length ? l.parts[0].label : '…'}`; b.setAttribute('aria-pressed', String(l === L));
   }
   const ll = $('#lLine'); ll.textContent = '';
   L.parts.forEach((x, k) => { const s = document.createElement('span'); s.textContent = x.text; if (k === L.i - 1) s.className = 'cur'; ll.append(s, ' ') });
-  const m0 = material(new Chess(T.p.fen)), m = material(T.chess);
-  $('#lSum').innerHTML = `Engine eval for this line: <b></b>. Material here: <b></b>`;
+  const m0 = material(new Chess(L.fen)), m = material(T.chess);
+  $('#lSum').innerHTML = `Engine eval ${L.whole ? 'here' : 'for this line'}: <b></b>. Material here: <b></b>`;
   const [ev, mat] = $('#lSum').querySelectorAll('b');
-  ev.textContent = evalWords(L.score);
-  mat.textContent = materialWords(m) + (m === m0 ? '' : ` (start: ${materialWords(m0)})`);
+  const e = L.whole && S.evals[L.i];
+  ev.textContent = !L.whole ? evalWords(L.score) : e ? evalWords(forWhite(e.score, S.game.positions[L.i].split(' ')[1])) : 'not ready yet';
+  mat.textContent = materialWords(m) + (m === m0 || L.whole ? '' : ` (start: ${materialWords(m0)})`);
   $('#lPos').textContent = L.i ? `Move ${L.i} of ${n}: ${L.parts[L.i - 1].label}` : `Start · ${n} move${n === 1 ? '' : 's'}`;
   $('#lStart').disabled = $('#lBack').disabled = L.i === 0;
   $('#lFwd').disabled = $('#lEnd').disabled = L.i === n;
@@ -976,18 +1043,20 @@ function allowedTactic(p) {
   return p.allowed;
 }
 // Sentences for the feedback box after a solve or a solution. line: the better line from the puzzle position.
-function tacticNotes(p, line) {
+// As parts: text, and { label, k, i } for the move that starts the tactic, i.e. move i of line k (see openLines).
+function tacticNoteParts(p, line) {
   const out = [], t = findTactics(p.fen, line), a = allowedTactic(p);
-  if (t) out.push(`The idea: ${pvParts(p.fen, line)[t.ply].label} ${tacticWords(t)}.`);
-  if (a) out.push(`The game move, ${pvParts(p.fen, [p.played.uci])[0].label}, allowed ${a.label}, which ${tacticWords(a)}.`);
-  return out.join(' ');
+  if (t) out.push('The idea: ', { label: pvParts(p.fen, line)[t.ply].label, k: 'best', i: t.ply + 1 }, ` ${tacticWords(t)}.`);
+  if (a) out.push(`${t ? ' ' : ''}The game move, ${pvParts(p.fen, [p.played.uci])[0].label}, allowed `, { label: a.label, k: 'game', i: a.ply + 2 }, `, which ${tacticWords(a)}.`);
+  return out;
 }
+const tacticNotes = (p, line) => tacticNoteParts(p, line).map(x => typeof x === 'string' ? x : x.label).join('');
 function showSolution() {
   const p = T.p; if (!p) return;
   if (p.status !== 'solved' && p.status !== 'retry') p.status = 'revealed';
   T.mode = 'show';
-  setFeedback('info', 'Solution. Compare it with the game line below.', null, tacticNotes(p, p.pv));
-  openLines(p.type === 'mate' ? p.pv : p.pv.slice(0, 6), p.before, 0);
+  setFeedback('info', 'Solution. Compare it with the game line below.', null, tacticNoteParts(p, p.pv));
+  openLines(p.type === 'mate' ? p.pv : p.pv.slice(0, 6), p.before, 0, p.pv);
   renderList(); updateNav();
 }
 function updateNav() {

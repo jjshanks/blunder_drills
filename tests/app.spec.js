@@ -204,6 +204,58 @@ test('the second hint names what the game move allowed when the better move is n
   await expect(page.locator('#fb .note')).toHaveText('The game move, 20... Rb8, allowed 21. Nc6, which forks the queen on d8 and the rook on b8, and wins the rook.');
 });
 
+test('a move in the solution note opens its line and draws the tactic on the board', async ({ page }) => {
+  await openAnalyzed(page);
+  await page.locator('.pitem .mv', { hasText: '41… Rh5' }).click();
+  const p = await current(page);
+  await page.locator('#bSol').click();
+  await page.locator('#fb .note .mvlink', { hasText: '42. Qh8+' }).click();
+  await expect(page.locator('#lWhich button[data-k="game"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#lPos')).toHaveText('Move 2 of 6: 42. Qh8+');
+  await expectBoardAt(page, p, [p.played, 'c8h8'], 2);
+  // The skewer: the queen move, one attack arrow through the king to the rook, and a ring on each.
+  await expect(page.locator('.sq.tgt')).toHaveCount(2);
+  await expect(page.locator('.sq.tgt[data-sq="h6"]')).toHaveCount(1);
+  await expect(page.locator('.sq.tgt[data-sq="h5"]')).toHaveCount(1);
+  await expect(page.locator('#board .arrow:not(.attack)')).toHaveAttribute('data-from', 'c8');
+  await expect(page.locator('#board .arrow.attack')).toHaveAttribute('data-from', 'h8');
+  await expect(page.locator('#board .arrow.attack')).toHaveAttribute('data-to', 'h5');
+  await page.keyboard.press('ArrowRight'); // the marks belong to that one position
+  await expect(page.locator('.sq.tgt')).toHaveCount(0);
+  await expect(page.locator('#board .arrow')).toHaveCount(0);
+});
+
+test('a click on the chart opens the whole game without giving away the puzzle', async ({ page }) => {
+  await openAnalyzed(page);
+  const box = await page.locator('#chart').boundingBox();
+  await page.locator('#chart').click({ position: { x: box.width * 34 / 600 + 1, y: box.height / 2 } }); // left edge of the plot
+  await expect(page.locator('#lWhich button[data-k="whole"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#lWhich button[data-k="best"]')).toBeHidden();
+  await expect(page.locator('#lWhich button[data-k="game"]')).toBeHidden();
+  await expect(page.locator('#lPos')).toHaveText('Start · 87 moves');
+  await expect(page.locator('#fb')).toHaveText('This is the whole game. To go back to the puzzle, click it in the list or press Retry.');
+  expect(await boardFen(page)).toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  await expect(page.locator('#bHint')).toBeDisabled();
+  await page.keyboard.press('End');
+  await expect(page.locator('#lPos')).toHaveText('Move 87 of 87: 44. Qxh5+');
+  await expect(page.locator('#lSum')).toContainText('Engine eval here: +');
+  await page.locator('#bRetry').click();
+  await expect(page.locator('#stepper')).toBeHidden();
+  await expect(page.locator('#prompt')).toHaveText('Black to move. Find a better move.');
+});
+
+test('after a solution, the whole game opens at the puzzle position', async ({ page }) => {
+  await openAnalyzed(page);
+  const p = await current(page); // 20... Rb8
+  await page.locator('#bSol').click();
+  await page.locator('#lWhich button[data-k="whole"]').click();
+  await expect(page.locator('#lPos')).toHaveText('Move 39 of 87: 20. Ne5');
+  expect(await boardFen(page)).toBe(p.fen);
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#lLine .cur')).toHaveText('Rb8');
+  await expect(page.locator('#lWhich button[data-k="best"]')).toBeVisible(); // a solved puzzle keeps its other lines
+});
+
 test('filters puzzles by player', async ({ page }) => {
   await openAnalyzed(page);
   await page.getByRole('button', { name: 'Alex Sample (White)' }).click();
