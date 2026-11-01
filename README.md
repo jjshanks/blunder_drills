@@ -44,12 +44,17 @@ npm test
 The page exposes its pure functions on `window.BlunderDrills` for these tests.
 
 GitHub Actions runs `npm test` on each push to `main` and on each pull request
-(`.github/workflows/test.yml`).
+(`.github/workflows/ci.yml`). The actions are pinned to commit SHAs. Dependabot
+(`.github/dependabot.yml`) proposes updates each week.
 
-## Publish (later)
+## Publish
 
-The plan is GitHub Pages: serve the repository root from the `main` branch.
-`.nojekyll` tells Pages to serve the files as they are.
+GitHub Pages serves the site. After the tests pass on `main`, the `deploy` job in
+`.github/workflows/ci.yml` publishes only `index.html`. The docs, tests and
+experiments are not on the site.
+
+One-time setup: in the repository settings, under Pages, set Source to
+**GitHub Actions**.
 
 ## License
 
@@ -63,7 +68,9 @@ Third-party parts are not MIT:
   unpkg at run time and talks to it only through UCI text messages.
   Source: <https://github.com/nmrugg/stockfish.js>
 - **chess.js** 1.4.0, by Jeff Hlywa, is BSD 2-Clause. It loads from jsDelivr.
-- **Chess pieces** inside `index.html` are by Cburnett, from Wikimedia Commons,
-  CC BY-SA 3.0.
+- **Chess pieces** inside `index.html` are by Cburnett, from Wikimedia Commons.
+  The author offers them under GFDL, CC BY-SA 3.0, BSD 3-Clause and GPLv2+.
+  This project uses them under the BSD 3-Clause License. The full notice is in
+  the comment at the top of `index.html`.
 - **Fonts** (Bricolage Grotesque, IBM Plex) load from Google Fonts under the
   SIL Open Font License.
