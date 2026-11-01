@@ -24,8 +24,8 @@
   --accent: #00509d; --accent-ink: #ffffff; --accent-soft: #dce7f4;
   --sq-l: #eef1f6; --sq-d: #7593c0; --frame: #00296b; --frame-ink: #b8c8e4;
   --hl-last: rgba(253, 197, 0, .6); --hl-sel: rgba(0, 80, 157, .45); --dot: rgba(0, 41, 107, .32); --hint: #ffd500;
-  --mate: #7a3fc4; --mate-soft: #ece3f8; --blunder: #c2410c; --blunder-soft: #fbe6da; --mistake: #a16207; --mistake-soft: #f7edd2;
-  --good: #1f7a4d; --good-soft: #dff1e6; --bad: #b42318; --bad-soft: #fbe4e1;
+  --mate: #7a3fc4; --blunder: #c2410c; --mistake: #a16207;
+  --good: #1f7a4d; --bad: #b42318;
   --adv-w: #f7f9fc; --adv-b: #00296b;
   --f-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -38,8 +38,8 @@
   --accent: #6ea8e8; --accent-ink: #06152b; --accent-soft: #1a2f50;
   --sq-l: #c9d4e6; --sq-d: #5d7aa8; --frame: #050c18; --frame-ink: #8fa6c9;
   --hl-last: rgba(253, 197, 0, .5); --hl-sel: rgba(110, 168, 232, .5); --dot: rgba(0, 15, 40, .4);
-  --mate: #b48cf0; --mate-soft: #2c2140; --blunder: #f08a5d; --blunder-soft: #3b2219; --mistake: #e0b450; --mistake-soft: #362c14;
-  --good: #5fd39a; --good-soft: #17352a; --bad: #f2867a; --bad-soft: #3d1c19;
+  --mate: #b48cf0; --blunder: #f08a5d; --mistake: #e0b450;
+  --good: #5fd39a; --bad: #f2867a;
   --adv-w: #dfe6f0; --adv-b: #050c18;
   color-scheme: dark } }
 
@@ -54,11 +54,12 @@ button, select, textarea { font: inherit; color: inherit }
 
 header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px }
 h1 { font-family: var(--f-display); font-weight: 800; font-size: clamp(30px, 5vw, 44px); line-height: 1; letter-spacing: -.02em; margin: 0 }
-h1 span { color: var(--accent) }
 .tag { color: var(--muted); margin: 6px 0 0; max-width: 58ch; text-wrap: pretty }
-.engine { font-family: var(--f-mono); font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px }
+.engine { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px }
 .engine i { width: 8px; height: 8px; border-radius: 50%; background: var(--mistake) }
-.engine.ok i { background: var(--good) } .engine.err i { background: var(--bad) }
+.engine.ok { display: none } /* only a loading or failed engine needs a word */
+.engine.err i { background: var(--bad) }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap } /* for screen readers only */
 
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 540px); grid-template-rows: auto auto auto 1fr; grid-template-areas: "head trainer" "input trainer" "chart trainer" "list trainer"; gap: 20px 28px; align-items: start }
 @media (max-width: 920px) { .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "head" "input" "trainer" "chart" "list" } }
@@ -101,10 +102,12 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .progress { display: grid; gap: 6px }
 .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden }
 .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .25s }
-.ptext { font-family: var(--f-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums }
+.ptext { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums }
+.progress.done .bar { display: none } /* when the analysis is complete, only the line of text stays */
+.progress.done #ptext { color: var(--ink); font-weight: 500 }
 
 .chart { width: 100%; height: auto; display: block; overflow: visible }
-.chart text { font-family: var(--f-mono); font-size: 10px; fill: var(--muted) }
+.chart text { font-size: 10px; fill: var(--muted); font-variant-numeric: tabular-nums }
 .chart { cursor: pointer } /* a click opens the whole game at that move */
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted) }
 .legend b { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0 }
@@ -115,20 +118,18 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .seg button:last-child { border-right: 0 }
 .seg button[aria-pressed="true"] { background: var(--accent-soft); font-weight: 600 }
 .plist { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0 }
-.pitem { width: 100%; display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 12px; align-items: center; text-align: left; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); cursor: pointer }
+.pitem { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; text-align: left; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); cursor: pointer }
 .pitem:hover { border-color: var(--accent) }
 .pitem[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent) }
-@media (max-width: 520px) { .pitem { grid-template-columns: auto minmax(0, 1fr); } .pitem .st { grid-column: 2 } }
 .pitem .mv { font-family: var(--f-mono); font-size: 13.5px; font-variant-numeric: tabular-nums }
+/* The kind of error: chess notation (?? a blunder, ? a mistake), or words for a missed mate. */
+.kind { font-weight: 700; margin-left: 1px }
+.kind.mate { font-weight: 600; font-size: 13px; margin-left: 8px }
+.kind.mate { color: var(--mate) } .kind.blunder { color: var(--blunder) } .kind.mistake { color: var(--mistake) }
 .pitem .who { color: var(--muted); font-size: 13.5px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 @media (max-width: 520px) { .pitem .who { white-space: normal } } /* wrap: keep the eval change in view */
 .st { font-size: 12px; font-weight: 600; white-space: nowrap }
 .st.solved { color: var(--good) } .st.retry { color: var(--mistake) } .st.revealed { color: var(--bad) } .st.new { color: var(--muted); font-weight: 400 }
-.chip { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; text-align: center; white-space: nowrap }
-.chip.mate { background: var(--mate-soft); color: var(--mate) }
-.chip.blunder { background: var(--blunder-soft); color: var(--blunder) }
-.chip.mistake { background: var(--mistake-soft); color: var(--mistake) }
-.chip.best { background: var(--accent-soft); color: var(--accent) }
 .empty { color: var(--muted); font-size: 14px; margin: 0; padding: 14px; border: 1px dashed var(--line); border-radius: 8px }
 
 .thead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap }
@@ -138,7 +139,8 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 .tprompt .ptext { white-space: nowrap }
 .tctx { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: -4px }
 .tctx .btn.util { margin-left: auto }
-.ctx { color: var(--muted); font-size: 14px; margin: 0; font-family: var(--f-mono); font-variant-numeric: tabular-nums }
+.ctx { color: var(--muted); font-size: 14px; margin: 0; font-variant-numeric: tabular-nums }
+.ctx .mv { font-family: var(--f-mono); font-size: 13.5px; color: var(--ink) }
 .actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center }
 .pager { display: inline-flex; margin-left: auto } /* on its own line, it stays at the right */
 .pager .btn:first-child { border-radius: 8px 0 0 8px }
@@ -180,10 +182,11 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
 
 .promo { display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
 .promo button { padding: 4px; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); cursor: pointer }
-.fb { border-radius: 8px; padding: 10px 12px; font-size: 15px; background: var(--bg); border-left: 4px solid var(--line); min-height: 44px; text-wrap: pretty }
-.fb.good { background: var(--good-soft); border-left-color: var(--good) }
-.fb.bad { background: var(--bad-soft); border-left-color: var(--bad) }
-.fb.info { border-left-color: var(--accent); background: transparent; border-radius: 0 } /* plain instructions: no box */
+/* The status line: no box. A result starts with a colored mark; the words say the same, so the color is not the only signal. */
+.fb { font-size: 15px; min-height: 45px; text-wrap: pretty }
+.fb.good::before, .fb.bad::before { font-weight: 700; margin-right: 6px; content: "✓"; content: "✓" / "" }
+.fb.good::before { color: var(--good) }
+.fb.bad::before { color: var(--bad); content: "✗"; content: "✗" / "" }
 .fb .line { font-family: var(--f-mono); font-size: 14px; display: block; margin-top: 4px; overflow-wrap: anywhere }
 .fb .note { display: block; margin-top: 6px; font-size: inherit; color: inherit } /* the explanation: body text, not the fine-print .note */
 .fb .mvlink { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer }
@@ -206,8 +209,8 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
   <div class="layout">
     <header class="top">
       <div>
-        <h1>Blunder <span>Drills</span></h1>
-        <p class="tag">Paste a game in PGN format. Stockfish runs in your browser, finds the blunders and missed mates, and turns each one into a puzzle.</p>
+        <h1>Blunder Drills</h1>
+        <p class="tag">Paste a game. Get back the moves you’d rather forget, as puzzles.</p>
       </div>
       <div class="engine" id="engine"><i></i><span id="engineText">Loading Stockfish 18…</span></div>
     </header>
@@ -230,13 +233,13 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
       <p class="err" id="err" hidden></p>
       <div class="progress" id="prog" hidden>
         <div class="bar"><div id="barFill"></div></div>
-        <span class="ptext" id="ptext"></span>
+        <span class="ptext"><span id="ptext"></span><span id="pmeta"></span></span>
       </div>
     </section>
 
     <section class="panel trainer" aria-labelledby="prompt">
       <div class="thead tprompt"><h2 class="prompt" id="prompt">Waiting for analysis</h2><span class="ptext" id="tcount"></span></div>
-      <div class="tctx"><span class="chip best" id="tchip">Position</span><p class="ctx" id="ctx">&nbsp;</p><button class="btn util" id="bFen">Copy FEN</button></div>
+      <div class="tctx"><p class="ctx" id="ctx">&nbsp;</p><button class="btn util" id="bFen">Copy FEN</button></div>
       <div class="bwrap"><div class="bframe" id="bframe"><div class="ranks" id="ranks" aria-hidden="true"></div><div class="board" id="board" aria-label="Chess board"></div><div class="files" id="files" aria-hidden="true"></div></div></div>
       <div class="promo" id="promo" hidden><span class="label">Promote to</span></div>
       <div class="actions">
@@ -273,7 +276,7 @@ select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); b
     <section class="panel chartp" aria-labelledby="h-chart">
       <div class="thead"><h2 id="h-chart">Evaluation</h2><span class="ptext" id="evalNow"></span></div>
       <svg class="chart" id="chart" viewBox="0 0 600 120" role="img" aria-label="Evaluation over the game"></svg>
-      <div class="legend"><span><b style="background:var(--mate)"></b>Missed mate</span><span><b style="background:var(--blunder)"></b>Blunder</span><span><b style="background:var(--mistake)"></b>Mistake</span><span>Light area: White is better</span></div>
+      <div class="legend"><span><b style="background:var(--mate)"></b>Missed mate</span><span><b style="background:var(--blunder)"></b>Blunder</span><span><b style="background:var(--mistake)"></b>Mistake</span></div>
     </section>
 
     <section class="panel listp" aria-labelledby="h-list">
@@ -481,7 +484,7 @@ async function analyze() {
   $('#evalNow').textContent = '';
   renderWho(); renderGameSummary(); refreshPuzzles(); drawChart();
   showPosition(game.positions[game.positions.length - 1], game.moves[game.moves.length - 1]);
-  $('#prog').hidden = false;
+  $('#prog').hidden = false; $('#prog').classList.remove('done'); $('#pmeta').textContent = '';
   try { await Engine.ready } catch { setProgress(0, 'The engine could not start in this browser.'); return }
   const n = game.positions.length, t0 = performance.now();
   for (let k = 0; k < n; k++) {
@@ -499,7 +502,8 @@ async function analyze() {
     refreshPuzzles(); drawChart();
   }
   const secs = ((performance.now() - t0) / 1000).toFixed(1);
-  setProgress(1, `Done · ${n} position${n > 1 ? 's' : ''} at depth ${depth} in ${secs}s`);
+  setProgress(1, 'Analysis complete'); $('#prog').classList.add('done');
+  $('#pmeta').textContent = ` · ${n} position${n > 1 ? 's' : ''} at depth ${depth} in ${secs}s`;
   const last = S.evals[n - 1];
   if (last) $('#evalNow').textContent = 'Final ' + fmt(forWhite(last.score, game.positions[n - 1].split(' ')[1]));
   if (!S.puzzles.length) setFeedback('info', 'No blunders or missed mates found with these settings. Try "Include mistakes" or a deeper search.');
@@ -548,6 +552,13 @@ const visible = () => S.puzzles.filter(p => S.who === 'all' || p.color === S.who
 
 /* ---------------- list + chart ---------------- */
 const TYPE_LABEL = p => p.type === 'mate' ? `Mate in ${p.mateN}` : p.type === 'blunder' ? 'Blunder' : 'Mistake';
+// The kind of error after the move: chess notation (?? a blunder, ? a mistake) with words for screen readers, or words for a missed mate.
+function kindEl(p) {
+  const s = document.createElement('span'); s.className = 'kind ' + p.type;
+  if (p.type === 'mate') s.textContent = `Missed mate in ${p.mateN}`;
+  else s.innerHTML = `<span aria-hidden="true">${p.type === 'blunder' ? '??' : '?'}</span><span class="vh"> (${p.type})</span>`;
+  return s;
+}
 function renderWho() {
   const el = $('#who'); el.innerHTML = '';
   el.hidden = !S.game;
@@ -577,8 +588,8 @@ function renderList() {
     if (idx === S.current) b.setAttribute('aria-current', 'true');
     const st = { new: ['new', 'To do'], solved: ['solved', '✓ Solved'], retry: ['retry', 'Solved after retry'], revealed: ['revealed', 'Revealed'] }[p.status || 'new'];
     const mv = moveLabel(p.played);
-    b.innerHTML = `<span class="chip ${p.type}">${TYPE_LABEL(p)}</span><span><span class="mv"></span><span class="who"></span></span><span class="st ${st[0]}">${st[1]}</span>`;
-    b.querySelector('.mv').textContent = mv;
+    b.innerHTML = `<span><span class="mv"></span><span class="who"></span></span><span class="st ${st[0]}">${st[1]}</span>`;
+    b.querySelector('.mv').textContent = mv; b.querySelector('.mv').after(kindEl(p));
     b.querySelector('.who').textContent = `Played by ${playerName(p.color)} · ${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))}`;
     b.onclick = () => { T.userTouched = true; loadPuzzle(idx) };
     li.appendChild(b); ul.appendChild(li);
@@ -633,9 +644,9 @@ $('#chart').addEventListener('click', e => {
 function showPosition(fen, lastMove) {
   T.p = null; T.chess = new Chess(fen); T.orient = T.chess.turn(); T.sel = null; T.hint = null; T.mode = 'idle'; T.line = null; T.lines = null; renderStepper();
   T.last = lastMove ? [lastMove.from, lastMove.to] : null;
-  $('#tchip').className = 'chip best'; $('#tchip').textContent = 'Position'; $('#tcount').textContent = '';
+  $('#tcount').textContent = '';
   $('#prompt').textContent = 'Finding puzzles…'; $('#ctx').textContent = ' ';
-  setFeedback('info', 'The engine is working through the game. The first puzzle opens here as soon as it is found.');
+  setFeedback('info', 'The first puzzle opens here when the engine finds it.');
   renderBoard(); updateNav();
 }
 function loadPuzzle(idx) {
@@ -644,11 +655,11 @@ function loadPuzzle(idx) {
   T.chess = new Chess(p.fen); T.orient = p.color; T.sel = null; T.hint = null; T.hintAt = null; T.pending = null; $('#promo').hidden = true; T.line = null; T.lines = null; renderStepper();
   T.last = p.prev ? [p.prev.from, p.prev.to] : null;
   T.mode = 'play'; T.left = p.type === 'mate' ? p.mateN : 1; T.firstTry = true;
-  $('#tchip').className = 'chip ' + p.type; $('#tchip').textContent = TYPE_LABEL(p);
   const side = sideName(p.color);
-  $('#prompt').textContent = p.type === 'mate' ? `${side} to move. Mate in ${p.mateN}.` : `${side} to move. Find a better move.`;
-  $('#ctx').textContent = `In the game: ${moveLabel(p.played)}  (${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))})`;
-  setFeedback('info', p.type === 'mate' ? 'The arrow shows the move from the game, which missed the mate. Find the forcing line. The engine will defend for the other side.' : 'The arrow shows the move from the game. Find a better one: click a piece, then click where it goes.');
+  $('#prompt').textContent = p.type === 'mate' ? `${side} to move. Mate in ${p.mateN}.` : `${side} to move. Improve on ${p.played.san}.`;
+  const ctx = $('#ctx'), mv = document.createElement('span'); mv.className = 'mv'; mv.textContent = moveLabel(p.played);
+  ctx.replaceChildren('In the game: ', mv, ...(p.type === 'mate' ? [] : [kindEl(p)]), ` · ${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))}`);
+  setFeedback('info', p.type === 'mate' ? 'Your move. The arrow shows the game move, which missed the mate. The engine plays the defense.' : 'Your move. The arrow shows the game move.');
   renderBoard(); renderList(); drawChart(); updateNav();
 }
 function setFeedback(kind, text, line, note) {
@@ -807,7 +818,7 @@ async function userMove(m) {
   const mv = T.chess.move({ from: m.from, to: m.to, promotion: m.promotion });
   T.sel = null; T.hint = null; T.last = [mv.from, mv.to]; T.anim = T.last; T.mode = 'wait'; renderBoard();
   if (p.type === 'mate') {
-    if (T.chess.isCheckmate()) return solved('Checkmate.', T.chess.history({ verbose: true }).map(uciOf), p.before);
+    if (T.chess.isCheckmate()) return solved(`Found it: ${mv.san}. That is checkmate.`, T.chess.history({ verbose: true }).map(uciOf), p.before);
     setFeedback('info', 'Checking your move…');
     const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
     if (tok !== T.token) return;
@@ -820,16 +831,16 @@ async function userMove(m) {
       const reply = playUci(T.chess, r.best);
       T.last = [reply.from, reply.to]; T.anim = T.last; T.mode = 'play'; renderBoard();
       setFeedback('good', `Opponent replies ${reply.san}. Mate in ${T.left}.`);
-    } else return wrong(mv.san, ours, isMate(ours) && ours.mate > 0 ? `That still mates, but in ${ours.mate}, not ${T.left - 1}.` : 'That lets the king escape.');
+    } else return wrong(mv.san, ours, isMate(ours) && ours.mate > 0 ? `it still mates, but in ${ours.mate}, not ${T.left - 1}.` : 'it lets the king escape.');
   } else {
-    if (uciOf(mv) === p.best) return solved(`${mv.san} is the engine's top choice.`, p.pv.slice(0, 6), p.before);
+    if (uciOf(mv) === p.best) return solved(`Found it: ${mv.san}, the engine's first choice.`, p.pv.slice(0, 6), p.before);
     setFeedback('info', 'Checking your move…');
     const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
     if (tok !== T.token) return;
     if (!r) return engineGone();
     const ours = neg(r.score);
-    if (wc(ours) >= wc(p.before) - 0.1) return solved(`${mv.san} works too (${fmt(forWhite(ours, p.color))}).`, [uciOf(mv), ...r.pv].slice(0, 6), ours);
-    wrong(mv.san, ours, p.played && uciOf(mv) === p.played.uci ? 'That is the move from the game.' : 'Still too costly.');
+    if (wc(ours) >= wc(p.before) - 0.1) return solved(`Found it: ${mv.san} also works (${fmt(forWhite(ours, p.color))}).`, [uciOf(mv), ...r.pv].slice(0, 6), ours);
+    wrong(mv.san, ours, p.played && uciOf(mv) === p.played.uci ? 'that is the move from the game.' : 'it still gives away too much.');
   }
 }
 const engineGone = () => setFeedback('bad', 'The engine stopped working, so this move cannot be checked. Reload the page to try again.');
@@ -839,7 +850,7 @@ const engineGone = () => setFeedback('bad', 'The engine stopped working, so this
 function solved(msg, line, score) {
   const p = T.p; T.mode = 'done';
   if (!p.status || p.status === 'new') p.status = T.firstTry ? 'solved' : 'retry';
-  setFeedback('good', msg + ' Solved. Compare your line with the game line below.', null, tacticNoteParts(p, line));
+  setFeedback('good', msg, null, tacticNoteParts(p, line));
   openLines(line, score, p.type === 'mate' ? line.length : 1);
   renderList(); updateNav();
 }
@@ -947,7 +958,7 @@ document.addEventListener('keydown', e => {
 });
 function wrong(san, ours, why) {
   const p = T.p; T.firstTry = false; p.tries = (p.tries || 0) + 1;
-  setFeedback('bad', `${san}: ${why} Eval ${fmt(forWhite(ours, p.color))}. Try again.`);
+  setFeedback('bad', `Not ${san}: ${why} Eval ${fmt(forWhite(ours, p.color))}. Try again.`);
   const b = $('#bframe'); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake');
   setTimeout(() => { if (T.p !== p) return; T.chess.undo(); const h = T.chess.history({ verbose: true }); T.last = h.length ? [h[h.length - 1].from, h[h.length - 1].to] : (p.prev ? [p.prev.from, p.prev.to] : null); T.mode = 'play'; renderBoard() }, 700);
 }

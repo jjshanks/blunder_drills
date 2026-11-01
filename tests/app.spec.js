@@ -6,7 +6,7 @@ const SAMPLE_PUZZLES = ['20… Rb8', '29. Rd2', '32… Kf8', '33. d5', '36… Rd
 async function openAnalyzed(page, url = '/') {
   await page.goto(url);
   await expect(page.locator('#engineText')).toHaveText('Stockfish 18 ready', { timeout: 60_000 });
-  await expect(page.locator('#ptext')).toHaveText(/^Done/, { timeout: 90_000 });
+  await expect(page.locator('#ptext')).toHaveText('Analysis complete', { timeout: 90_000 });
 }
 async function play(page, uci) {
   await page.locator(`.sq[data-sq="${uci.slice(0, 2)}"]`).click();
@@ -38,9 +38,12 @@ test('analyzes the sample game into the expected puzzles', async ({ page }) => {
   await openAnalyzed(page);
   await expect(page.locator('#summary')).toHaveText(/^6 puzzles: 1 missed mate, 5 blunders\./);
   await expect(page.locator('.pitem .mv')).toHaveText(SAMPLE_PUZZLES);
-  await expect(page.locator('.pitem .chip.mate')).toHaveText(['Mate in 2']);
+  await expect(page.locator('.pitem .kind.mate')).toHaveText(['Missed mate in 2']);
+  await expect(page.locator('.pitem .kind')).toHaveText(['?? (blunder)', 'Missed mate in 2', '?? (blunder)', '?? (blunder)', '?? (blunder)', '?? (blunder)']);
   await expect(page.locator('#chart .mk')).toHaveCount(6);
   await expect(page.locator('#tcount')).toHaveText('Puzzle 1 of 6');
+  await expect(page.locator('#prog .bar')).toBeHidden(); // a complete analysis keeps only its line of text
+  await expect(page.locator('#engine')).toBeHidden(); // a ready engine needs no status
 });
 
 test('solves a blunder puzzle on the first try, then steps through the engine line', async ({ page }) => {
@@ -50,7 +53,7 @@ test('solves a blunder puzzle on the first try, then steps through the engine li
   await play(page, p.best);
   await expect(arrow(page)).toHaveCount(0);
   await expect(page.locator('#fb')).toHaveClass(/good/);
-  await expect(page.locator('#fb')).toContainText('Solved.');
+  await expect(page.locator('#fb')).toContainText('Found it: ');
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('✓ Solved');
   await expect(page.locator('#summary')).toContainText('Solved on first try: 1.');
 
@@ -123,7 +126,7 @@ test('rejects the game move, resets the board, then counts a later solve as a re
   const p = await current(page);
   await play(page, p.played);
   await expect(page.locator('#fb')).toHaveClass(/bad/);
-  await expect(page.locator('#fb')).toContainText('That is the move from the game.');
+  await expect(page.locator('#fb')).toContainText('that is the move from the game.');
   await page.waitForFunction(fen => {
     const t = window.BlunderDrills.trainer;
     return t.mode === 'play' && t.chess.fen() === fen;
@@ -135,7 +138,7 @@ test('rejects the game move, resets the board, then counts a later solve as a re
 
 test('plays out the missed mate in 2 against the engine', async ({ page }) => {
   await openAnalyzed(page);
-  await page.locator('.pitem', { hasText: 'Mate in 2' }).click();
+  await page.locator('.pitem', { hasText: 'Missed mate in 2' }).click();
   await expect(page.locator('#prompt')).toHaveText('White to move. Mate in 2.');
   await play(page, (await current(page)).best);
   await expect(page.locator('#fb')).toContainText('Opponent replies');
@@ -145,14 +148,14 @@ test('plays out the missed mate in 2 against the engine', async ({ page }) => {
     return m.from + m.to;
   });
   await play(page, mate);
-  await expect(page.locator('#fb')).toContainText('Checkmate. Solved.');
+  await expect(page.locator('#fb')).toContainText('That is checkmate.');
 });
 
 test('solves a puzzle by dragging a piece', async ({ page }) => {
   await openAnalyzed(page);
   const p = await current(page);
   await page.locator(`.sq[data-sq="${p.best.slice(0, 2)}"]`).dragTo(page.locator(`.sq[data-sq="${p.best.slice(2, 4)}"]`));
-  await expect(page.locator('#fb')).toContainText('Solved.');
+  await expect(page.locator('#fb')).toContainText('Found it: ');
   await expect(page.locator('.pc.ghost')).toHaveCount(0);
 });
 
@@ -241,7 +244,7 @@ test('a click on the chart opens the whole game without giving away the puzzle',
   await expect(page.locator('#lSum')).toContainText('Engine eval here: +');
   await page.locator('#bRetry').click();
   await expect(page.locator('#stepper')).toBeHidden();
-  await expect(page.locator('#prompt')).toHaveText('Black to move. Find a better move.');
+  await expect(page.locator('#prompt')).toHaveText('Black to move. Improve on Rb8.');
 });
 
 test('after a solution, the whole game opens at the puzzle position', async ({ page }) => {
@@ -282,7 +285,8 @@ test('analyzes a pasted game that ends in checkmate and remembers it after reloa
   await page.locator('#run').click();
   await expect(page.locator('#src')).toBeHidden();
   await expect(page.locator('#gsum')).toHaveText('White vs Black · 1-0 · 4 moves');
-  await expect(page.locator('#ptext')).toHaveText(/^Done · 8 positions/, { timeout: 60_000 });
+  await expect(page.locator('#pmeta')).toHaveText(/^ · 8 positions/, { timeout: 60_000 });
+  await expect(page.locator('#ptext')).toHaveText('Analysis complete');
   await expect(page.locator('.pitem .mv')).toContainText(['3… Nf6']);
   await expect(page.locator('#evalNow')).toHaveText('Final 1-0');
   await page.reload();
@@ -317,7 +321,7 @@ test('keeps keyboard focus on the board, so a move can be made with the keyboard
   await expect(page.locator(`.sq.sel[data-sq="${from}"]`)).toHaveCount(1);
   await page.locator(`.sq[data-sq="${to}"]`).focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('#fb')).toContainText('Solved.');
+  await expect(page.locator('#fb')).toContainText('Found it: ');
   await expect(page.locator(`.sq[data-sq="${to}"]`)).toBeFocused();
 });
 
