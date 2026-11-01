@@ -154,7 +154,8 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .pager .btn:first-child { border-radius: var(--r) 0 0 var(--r) }
 .pager .btn + .btn { border-radius: 0 var(--r) var(--r) 0; margin-left: -1px }
 .pager .btn:focus-visible { position: relative; z-index: 1 }
-/* The board fits the window height with the head and the actions (--chrome: the height of all of them but the board).
+/* The board fits the window height with the head and the actions (--chrome: the height of all of them but the board,
+   and the page margins). The script measures --chrome (fitBoard); 210px is the value before the script runs.
    The rest of the trainer keeps the board's width, so that the actions stay below the board in a wide, short window. */
 .trainer { --chrome: 210px; --bw: max(320px, calc(100svh - var(--chrome))) }
 .trainer > * { width: 100%; max-width: var(--bw); justify-self: center }
@@ -824,7 +825,7 @@ function playUci(c, u) { try { return c.move({ from: u.slice(0, 2), to: u.slice(
 async function userMove(m) {
   const p = T.p, tok = T.token;
   const mv = T.chess.move({ from: m.from, to: m.to, promotion: m.promotion });
-  T.sel = null; T.hint = null; T.last = [mv.from, mv.to]; T.anim = T.last; T.mode = 'wait'; T.tried = true; $('#bRetry').hidden = false; renderBoard();
+  T.sel = null; T.hint = null; T.last = [mv.from, mv.to]; T.anim = T.last; T.mode = 'wait'; T.tried = true; renderBoard(); updateNav();
   if (p.type === 'mate') {
     if (T.chess.isCheckmate()) return solved(`Found it: ${mv.san}. That is checkmate.`, T.chess.history({ verbose: true }).map(uciOf), p.before);
     setFeedback('info', 'Checking your move…');
@@ -837,7 +838,7 @@ async function userMove(m) {
       setFeedback('good', `Good. ${mv.san} keeps the mate on. Mate in ${T.left} now.`);
       await wait(450); if (tok !== T.token) return;
       const reply = playUci(T.chess, r.best);
-      T.last = [reply.from, reply.to]; T.anim = T.last; T.mode = 'play'; renderBoard();
+      T.last = [reply.from, reply.to]; T.anim = T.last; T.mode = 'play'; renderBoard(); updateNav();
       setFeedback('good', `Opponent replies ${reply.san}. Mate in ${T.left}.`);
     } else return wrong(mv.san, ours, isMate(ours) && ours.mate > 0 ? `it still mates, but in ${ours.mate}, not ${T.left - 1}.` : 'it lets the king escape.');
   } else {
@@ -968,7 +969,7 @@ function wrong(san, ours, why) {
   const p = T.p; T.firstTry = false; p.tries = (p.tries || 0) + 1;
   setFeedback('bad', `Not ${san}: ${why} Eval ${fmt(forWhite(ours, p.color))}. Try again.`);
   const b = $('#bframe'); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake');
-  setTimeout(() => { if (T.p !== p) return; T.chess.undo(); const h = T.chess.history({ verbose: true }); T.last = h.length ? [h[h.length - 1].from, h[h.length - 1].to] : (p.prev ? [p.prev.from, p.prev.to] : null); T.mode = 'play'; renderBoard() }, 700);
+  setTimeout(() => { if (T.p !== p) return; T.chess.undo(); const h = T.chess.history({ verbose: true }); T.last = h.length ? [h[h.length - 1].from, h[h.length - 1].to] : (p.prev ? [p.prev.from, p.prev.to] : null); T.mode = 'play'; renderBoard(); updateNav() }, 700);
 }
 const wait = ms => new Promise(r => setTimeout(r, ms));
 // Each move of a UCI line as { label: '6... b5', text: as written in a line, e.g. 'b5' }. Stops at an illegal move.
@@ -1135,8 +1136,16 @@ function updateNav() {
   $('#bHint').disabled = !has || T.mode !== 'play'; $('#bSol').disabled = !has; $('#bRetry').hidden = !has || !(T.tried || T.mode === 'done' || T.mode === 'show'); $('#bFen').disabled = !T.chess;
   $('#bNext').classList.toggle('primary', T.mode === 'done' || T.mode === 'show'); // while you play, the board is the main action
 }
+// --chrome: the height above the board (the prompt and the context line, which can wrap), the actions below it,
+// and the page margins. The promotion row is not in it, so that the board does not jump when that row opens.
+function fitBoard() {
+  const tr = $('.trainer'), above = $('.bwrap').getBoundingClientRect().top - tr.getBoundingClientRect().top;
+  const below = parseFloat(getComputedStyle(tr).rowGap) + $('.actions').offsetHeight;
+  const v = Math.ceil(above + below + parseFloat(getComputedStyle(document.body).paddingTop) + 16) + 'px';
+  if (tr.style.getPropertyValue('--chrome') !== v) tr.style.setProperty('--chrome', v); // a wider board never wraps more, so this settles
+}
 // The trainer is sticky. When it is taller than the window, a negative top lets its bottom (the line and its buttons) come into view.
-function fitSticky() { const tr = $('.trainer'); tr.style.top = Math.min(16, innerHeight - tr.offsetHeight - 16) + 'px' }
+function fitSticky() { fitBoard(); const tr = $('.trainer'); tr.style.top = Math.min(16, innerHeight - tr.offsetHeight - 16) + 'px' }
 new ResizeObserver(fitSticky).observe($('.trainer')); addEventListener('resize', fitSticky);
 $('#bNext').onclick = () => { T.userTouched = true; const vis = visible(); const vi = T.p ? vis.indexOf(T.p) : -1; if (vis[vi + 1]) loadPuzzle(S.puzzles.indexOf(vis[vi + 1])) };
 $('#bPrev').onclick = () => { T.userTouched = true; const vis = visible(); const vi = vis.indexOf(T.p); if (vi > 0) loadPuzzle(S.puzzles.indexOf(vis[vi - 1])) };

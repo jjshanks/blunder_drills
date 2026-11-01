@@ -133,6 +133,7 @@ test('rejects the game move, resets the board, then counts a later solve as a re
     const t = window.BlunderDrills.trainer;
     return t.mode === 'play' && t.chess.fen() === fen;
   }, p.fen);
+  await expect(page.locator('#bHint')).toBeEnabled(); // the buttons follow the board back to play
   await expectGameMoveArrow(page, p);
   await play(page, p.best);
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('Solved after retry');
@@ -144,6 +145,7 @@ test('plays out the missed mate in 2 against the engine', async ({ page }) => {
   await expect(page.locator('#prompt')).toHaveText('White to move. Mate in 2.');
   await play(page, (await current(page)).best);
   await expect(page.locator('#fb')).toContainText('Opponent replies');
+  await expect(page.locator('#bHint')).toBeEnabled();
   const mate = await page.evaluate(() => {
     const c = new window.BlunderDrills.Chess(window.BlunderDrills.trainer.chess.fen());
     const m = c.moves({ verbose: true }).find(m => { c.move(m); const x = c.isCheckmate(); c.undo(); return x });
@@ -298,6 +300,10 @@ test('analyzes a pasted game that ends in checkmate and remembers it after reloa
 test('fits the board and the puzzle actions in a short desktop window', async ({ page }) => {
   await page.setViewportSize({ width: 1265, height: 712 });
   await openAnalyzed(page);
+  for (const s of ['#prompt', '#bframe', '#bHint', '#bNext']) await expect(page.locator(s)).toBeInViewport({ ratio: 1 });
+  // A prompt that wraps onto three lines makes the board smaller, not the actions go out of view.
+  await page.locator('#prompt').evaluate(e => { e.textContent = 'Black to move. This test prompt is long on purpose, so that it wraps onto three lines in the trainer.' });
+  expect(await page.locator('#prompt').evaluate(e => e.getBoundingClientRect().height)).toBeGreaterThan(80);
   for (const s of ['#prompt', '#bframe', '#bHint', '#bNext']) await expect(page.locator(s)).toBeInViewport({ ratio: 1 });
   await expect(page.locator('#bNext')).not.toHaveClass(/primary/); // Next is the main action only after the puzzle
   await page.locator('#bSol').click();
