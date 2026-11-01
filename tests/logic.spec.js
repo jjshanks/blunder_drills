@@ -88,12 +88,13 @@ test.describe('PGN input', () => {
   });
 
   test('parseInput rejects empty input, a bare FEN, bad PGN and games with no moves', async ({ page }) => {
-    const errs = await run(page, D => ['  ', 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1', '1. e4 e5 2. Ke3 Ke6 3. Qh9', '[White "A"]\n[Black "B"]\n\n*']
+    const errs = await run(page, D => ['  ', 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1', '1. e4 e5 2. Ke3 Ke6 3. Qh9', '[White "A"]\n[Black "B"]\n\n*', '1. e4 e5 2. Ke3 Nc6']
       .map(t => { try { D.parseInput(t); return 'no error' } catch (e) { return e.message } }));
     expect(errs[0]).toMatch(/Paste a PGN/);
     expect(errs[1]).toMatch(/single position \(FEN\)/);
     expect(errs[2]).toMatch(/Could not read that PGN/);
     expect(errs[3]).toMatch(/no moves/);
+    expect(errs[4]).toBe('Could not play the move Ke3. Check it for a typo or an illegal move.'); // an illegal move is named
   });
 
   test('pvSan writes engine lines with move numbers', async ({ page }) => {
@@ -197,6 +198,13 @@ test.describe('findTactics', () => {
   test('a later mate confirms only a motif that hits the king', async ({ page }) => {
     // Bc3 pins the knight to the queen; the back-rank mate Re8# has nothing to do with the pin.
     expect(await words(page, '6k1/p4ppp/5q2/8/3n4/8/4R3/4B2K w - - 0 1', ['e1c3', 'a7a6', 'e2e8'])).toBeNull();
+  });
+
+  test('in a line that ends in mate, material won on the way is not the idea', async ({ page }) => {
+    // Rxb7 takes a free bishop, but the point of the line is the back-rank mate Re8#.
+    expect(await words(page, '6k1/pb3ppp/8/8/8/8/8/1R2R1K1 w - - 0 1', ['b1b7', 'a7a6', 'e1e8'])).toBeNull();
+    // The same capture, in a line that does not mate, still counts.
+    expect(await words(page, '6k1/pb3ppp/8/8/8/8/8/1R2R1K1 w - - 0 1', ['b1b7', 'a7a6'])).toBe('Rxb7 takes the bishop on b7 for free');
   });
 
   test('tacticNotes tells the idea and what the game move allowed', async ({ page }) => {

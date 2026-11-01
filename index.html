@@ -208,8 +208,9 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .stepper { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line) } /* a divider, not another box */
 .stepper .seg { justify-self: start }
 .lline { margin: 0; font-family: var(--f-mono); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere }
-.lline span { padding: 1px 3px; border-radius: 4px }
-.lline span.cur { background: var(--accent-soft); color: var(--ink); font-weight: 500; box-shadow: inset 0 -2px 0 var(--accent) }
+.lline button { padding: 1px 3px; border: 0; border-radius: 4px; background: none; font: inherit; color: inherit; cursor: pointer }
+.lline button:hover { background: var(--soft) }
+.lline button.cur { background: var(--accent-soft); color: var(--ink); font-weight: 500; box-shadow: inset 0 -2px 0 var(--accent) }
 .lsum { margin: 0; font-size: 14.5px; color: var(--muted) }
 .lsum b { color: var(--ink); font-weight: 600 }
 .stepper .btn { min-width: 40px; justify-content: center; font-size: 17px; line-height: 1; padding: 7px 10px }
@@ -258,13 +259,13 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       <div class="promo" id="promo" hidden><span class="label">Promote to</span></div>
       <div class="actions">
         <div class="row" role="group" aria-label="Help with this puzzle">
-          <button class="btn quiet" id="bHint">Hint</button>
-          <button class="btn quiet" id="bSol">Show solution</button>
-          <button class="btn" id="bRetry" hidden>Retry</button>
+          <button class="btn quiet" id="bHint" title="Hint (H)" aria-keyshortcuts="H">Hint</button>
+          <button class="btn quiet" id="bSol" title="Show solution (S)" aria-keyshortcuts="S">Show solution</button>
+          <button class="btn" id="bRetry" title="Retry (R)" aria-keyshortcuts="R" hidden>Retry</button>
         </div>
         <div class="pager" role="group" aria-label="Puzzles">
-          <button class="btn" id="bPrev">← Prev</button>
-          <button class="btn" id="bNext">Next →</button>
+          <button class="btn" id="bPrev" title="Previous puzzle (P)" aria-keyshortcuts="P">← Prev</button>
+          <button class="btn" id="bNext" title="Next puzzle (N)" aria-keyshortcuts="N">Next →</button>
         </div>
       </div>
       <div class="fb info" id="fb" aria-live="polite">Click a piece, then click where it goes.</div>
@@ -460,7 +461,10 @@ function parseInput(raw) {
   if (!txt) throw new Error('Paste a PGN to analyze.');
   if (/^([rnbqkpRNBQKP1-8]+\/){7}[rnbqkpRNBQKP1-8]+\s+[wb](\s|$)/.test(txt)) throw new Error('That looks like a single position (FEN). Paste a whole game in PGN format.');
   const g = new Chess();
-  try { g.loadPgn(cleanPgn(txt)) } catch { throw new Error('Could not read that PGN. Check the move list for typos or illegal moves.') }
+  try { g.loadPgn(cleanPgn(txt)) } catch (e) {
+    const bad = /Invalid move in PGN: (\S+)/.exec(e.message); // chess.js names the first move it cannot play
+    throw new Error(bad ? `Could not play the move ${bad[1]}. Check it for a typo or an illegal move.` : 'Could not read that PGN. Check the move list for typos or illegal moves.');
+  }
   const headers = g.getHeaders();
   const hist = g.history({ verbose: true });
   if (!hist.length) throw new Error('That PGN has no moves.');
@@ -477,7 +481,7 @@ function parseInput(raw) {
 }
 
 /* ---------------- state ---------------- */
-const S = { game: null, evals: [], puzzles: [], who: 'all', run: 0, analyzedDepth: 0, current: -1 };
+const S = { game: null, evals: [], puzzles: [], who: 'all', run: 0, analyzedDepth: 0, current: -1, done: false, key: null, progress: {} };
 const T = { p: null, chess: null, orient: 'w', sel: null, last: null, mode: 'idle', left: 0, token: 0, hint: null, legal: [], pending: null, line: null, lines: null };
 
 const moveLabel = (m) => m.color === 'w' ? `${m.moveNo}. ${m.san}` : `${m.moveNo}… ${m.san}`;
@@ -493,11 +497,12 @@ async function analyze() {
   $('#setup').open = false; // the game summary replaces the PGN while you train
   const run = ++S.run;
   const depth = +$('#depth').value;
-  S.game = game; S.evals = new Array(game.positions.length); S.puzzles = []; S.analyzedDepth = depth; S.current = -1;
-  T.userTouched = false;
+  S.game = game; S.evals = new Array(game.positions.length); S.puzzles = []; S.analyzedDepth = depth; S.current = -1; S.done = false;
+  S.key = gameKey(game); S.progress = loadProgress(S.key);
+  const me = store.get('drills.me'); S.who = me ? ['w', 'b'].find(c => playerName(c) === me) || 'all' : 'all';
   $('#evalNow').textContent = '';
+  showGameEnd();
   renderWho(); renderGameSummary(); refreshPuzzles(); drawChart();
-  showPosition(game.positions[game.positions.length - 1], game.moves[game.moves.length - 1]);
   $('#prog').hidden = false; $('#prog').classList.remove('done'); $('#pmeta').textContent = '';
   try { await Engine.ready } catch { setProgress(0, 'The engine could not start in this browser.'); return }
   const n = game.positions.length, t0 = performance.now();
@@ -520,8 +525,18 @@ async function analyze() {
   $('#pmeta').textContent = ` · ${n} position${n > 1 ? 's' : ''} at depth ${depth} in ${secs}s`;
   const last = S.evals[n - 1];
   if (last) { const e = forWhite(last.score, game.positions[n - 1].split(' ')[1]); $('#evalNow').textContent = (isMate(e) && e.mate === 0 ? 'Checkmate · ' : 'End ') + fmt(e) }
-  if (!S.puzzles.length) setFeedback('info', 'No blunders or missed mates found with these settings. Try "Include mistakes" or a deeper search.');
+  S.done = true; renderList(); syncBoard();
 }
+const showGameEnd = () => { const g = S.game; showPosition(g.positions[g.positions.length - 1], g.moves[g.moves.length - 1]) };
+// Puzzle progress for each game, in localStorage as { 'ply type': status }. The key is a hash of the moves,
+// so the progress stays when the same game is analyzed again, at any depth.
+function gameKey(g) {
+  let h = 0x811c9dc5; // FNV-1a
+  for (const ch of g.startFen + ' ' + g.moves.map(m => m.uci).join(' ')) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193);
+  return 'drills.game.' + (h >>> 0).toString(36);
+}
+function loadProgress(key) { try { return JSON.parse(store.get(key)) || {} } catch { return {} } }
+function saveStatus(p) { S.progress[p.ply + p.type] = p.status; store.set(S.key, JSON.stringify(S.progress)) }
 // One line for the loaded game, for example "Martin Reyes vs Priya Nair · 1-0 · 44 moves".
 function renderGameSummary() {
   const g = S.game, el = $('#gsum'); el.hidden = !g; if (!g) return;
@@ -555,12 +570,31 @@ function detectPuzzles(g, E, { maxMate, withMistakes }) {
 function refreshPuzzles() {
   const fresh = detectPuzzles(S.game, S.evals, { maxMate: +$('#maxMate').value, withMistakes: $('#mistakes').checked });
   const old = new Map(S.puzzles.map(p => [p.ply + p.type, p]));
-  S.puzzles = fresh.map(p => { const o = old.get(p.ply + p.type); if (o) return Object.assign(o, p, { status: o.status, tries: o.tries }); p.status = 'new'; p.tries = 0; return p });
+  S.puzzles = fresh.map(p => { const o = old.get(p.ply + p.type); if (o) return Object.assign(o, p, { status: o.status, tries: o.tries }); p.status = S.progress[p.ply + p.type] || 'new'; p.tries = 0; return p });
   S.current = T.p ? S.puzzles.indexOf(T.p) : -1;
-  renderList();
+  renderList(); syncBoard(); updateNav();
+}
+// Keep a visible puzzle on the board. When a filter or a setting hides the puzzle on the board, open the next
+// visible one in game order (or the last one). With no puzzle on the board, open the first one, but do not
+// close the whole game if it is open.
+function syncBoard() {
   const vis = visible();
-  if (!T.userTouched && vis.length && (!T.p || S.current < 0)) loadPuzzle(S.puzzles.indexOf(vis[0]));
-  updateNav();
+  if (T.p ? vis.includes(T.p) : T.lines) return;
+  const p = T.p ? vis.find(q => q.ply >= T.p.ply) || vis[vis.length - 1] : vis[0];
+  if (p) loadPuzzle(S.puzzles.indexOf(p)); else if (T.p) showGameEnd(); else emptyText();
+}
+// The prompt and the feedback when no puzzle is on the board: why, and what to change to find more.
+function emptyText() {
+  let prompt = 'Finding puzzles…', msg = 'The first puzzle opens here when the engine finds it.';
+  if (S.game && S.done) {
+    const other = S.puzzles.length > 0, who = other ? ` by ${playerName(S.who)}` : ''; // puzzles for the other player only
+    const mistakes = $('#mistakes').checked;
+    const tips = [other && 'choose Both players', !mistakes && 'turn on Include mistakes', +$('#maxMate').value < 5 && 'allow longer missed mates', S.analyzedDepth < 18 && 'analyze again at a greater depth'].filter(Boolean);
+    prompt = other ? `No puzzles for ${playerName(S.who)}` : 'No puzzles in this game';
+    msg = `The engine found no blunders${mistakes ? ', mistakes' : ''} or missed mates${who} with these settings.` + (tips.length ? ` To find more, ${orList(tips)}.` : '');
+  }
+  $('#prompt').textContent = prompt; $('#ctx').textContent = ' ';
+  if ($('#fb').textContent !== msg) setFeedback('info', msg); // the feedback is a live region: say it once
 }
 const visible = () => S.puzzles.filter(p => S.who === 'all' || p.color === S.who);
 
@@ -578,7 +612,11 @@ function renderWho() {
   el.hidden = !S.game;
   for (const [k, label] of [['all', 'Both players'], ['w', `${playerName('w')} (White)`], ['b', `${playerName('b')} (Black)`]]) {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', String(S.who === k));
-    b.onclick = () => { S.who = k; renderWho(); renderList(); updateNav() }; el.appendChild(b);
+    b.onclick = () => {
+      S.who = k; renderWho(); renderList(); drawChart(); syncBoard(); updateNav();
+      if (k === 'all' || playerName(k) !== sideName(k)) store.set('drills.me', k === 'all' ? '' : playerName(k)); // the next game opens on this player
+    };
+    el.appendChild(b);
   }
 }
 function renderList() {
@@ -587,14 +625,15 @@ function renderList() {
   const counts = { mate: 0, blunder: 0, mistake: 0 };
   vis.forEach(p => counts[p.type] = (counts[p.type] || 0) + 1);
   const solved = vis.filter(p => p.status === 'solved').length;
+  const none = S.puzzles.length ? `No puzzles for ${playerName(S.who)} with these settings.` : 'No puzzles in this game with these settings.';
   if (S.game) {
     const parts = [];
     if (counts.mate) parts.push(`${counts.mate} missed mate${counts.mate > 1 ? 's' : ''}`);
     if (counts.blunder) parts.push(`${counts.blunder} blunder${counts.blunder > 1 ? 's' : ''}`);
     if (counts.mistake) parts.push(`${counts.mistake} mistake${counts.mistake > 1 ? 's' : ''}`);
-    $('#summary').textContent = vis.length ? `${vis.length} puzzle${vis.length > 1 ? 's' : ''}: ${parts.join(', ')}. Solved on first try: ${solved}.` : (S.evals.filter(Boolean).length === S.evals.length ? 'Nothing to drill for this player with these settings.' : 'Puzzles appear here as the engine finds them.');
+    $('#summary').textContent = vis.length ? `${vis.length} puzzle${vis.length > 1 ? 's' : ''}: ${parts.join(', ')}. Solved on first try: ${solved}.` : S.done ? none : 'Puzzles appear here as the engine finds them.';
   } else $('#summary').textContent = 'Puzzles appear here as the engine finds them.';
-  if (!vis.length) { const li = document.createElement('li'); li.innerHTML = '<p class="empty">No puzzles yet.</p>'; ul.appendChild(li) }
+  if (!vis.length && !S.done) { const li = document.createElement('li'); li.innerHTML = '<p class="empty">No puzzles yet.</p>'; ul.appendChild(li) }
   for (const p of vis) {
     const idx = S.puzzles.indexOf(p);
     const li = document.createElement('li');
@@ -606,7 +645,7 @@ function renderList() {
     b.querySelector('.side').title = `${playerName(p.color)} (${sideName(p.color)})`; b.querySelector('.side .vh').textContent = `${playerName(p.color)}: `;
     b.querySelector('.mv').textContent = moveLabel(p.played); b.querySelector('.mv').after(kindEl(p));
     b.querySelector('.ev').textContent = ` · ${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))}`;
-    b.onclick = () => { T.userTouched = true; loadPuzzle(idx) };
+    b.onclick = () => loadPuzzle(idx);
     li.appendChild(b); ul.appendChild(li);
   }
   $('#copyAll').disabled = !vis.length;
@@ -618,9 +657,11 @@ function drawChart() {
   const n = g ? g.positions.length : 0;
   const x = k => padL + (n > 1 ? k / (n - 1) : 0.5) * (W - padL - padR);
   const y = v => padT + (1 - v) / 2 * (H - padT - padB);
-  let h = `<rect x="${padL}" y="${padT}" width="${W - padL - padR}" height="${H - padT - padB}" fill="var(--adv-b)" rx="4"/>`;
   const pts = [];
   if (g) for (let k = 0; k < n; k++) { const e = S.evals[k]; if (!e) break; pts.push([x(k), y(wc(forWhite(e.score, g.positions[k].split(' ')[1])))]) }
+  const xEnd = pts.length ? pts[pts.length - 1][0] : padL, plotH = H - padT - padB; // the plot is coloured only as far as the analysis has come
+  let h = `<rect x="${padL}" y="${padT}" width="${(xEnd - padL).toFixed(1)}" height="${plotH}" fill="var(--adv-b)" rx="4"/>`;
+  if (xEnd < W - padR) h += `<rect x="${xEnd.toFixed(1)}" y="${padT}" width="${(W - padR - xEnd).toFixed(1)}" height="${plotH}" fill="none" stroke="var(--line)" stroke-dasharray="3 3" rx="4"/>`;
   if (pts.length) {
     const d = `M${pts[0][0]},${y(-1)} ` + pts.map(p => `L${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ') + ` L${pts[pts.length - 1][0].toFixed(1)},${y(-1)} Z`;
     h += `<path d="${d}" fill="var(--adv-w)"/>`;
@@ -648,7 +689,6 @@ function drawChart() {
 }
 $('#chart').addEventListener('click', e => {
   if (!S.game) return;
-  T.userTouched = true;
   const mk = e.target.closest('.mk'); if (mk) return loadPuzzle(+mk.dataset.i);
   const { W, padL, padR } = CHART, r = $('#chart').getBoundingClientRect(), n = S.game.positions.length;
   const f = ((e.clientX - r.left) / r.width * W - padL) / (W - padL - padR);
@@ -660,9 +700,7 @@ function showPosition(fen, lastMove) {
   T.p = null; T.chess = new Chess(fen); T.orient = T.chess.turn(); T.sel = null; T.hint = null; T.mode = 'idle'; T.line = null; T.lines = null; renderStepper();
   T.last = lastMove ? [lastMove.from, lastMove.to] : null;
   $('#tcount').textContent = '';
-  $('#prompt').textContent = 'Finding puzzles…'; $('#ctx').textContent = ' ';
-  setFeedback('info', 'The first puzzle opens here when the engine finds it.');
-  renderBoard(); updateNav();
+  emptyText(); renderBoard(); updateNav();
 }
 function loadPuzzle(idx) {
   const p = S.puzzles[idx]; if (!p) return;
@@ -846,7 +884,7 @@ async function userMove(m) {
       const reply = playUci(T.chess, r.best);
       T.last = [reply.from, reply.to]; T.anim = T.last; T.mode = 'play'; renderBoard(); updateNav();
       setFeedback('good', `Opponent replies ${reply.san}. Mate in ${T.left}.`);
-    } else return wrong(mv.san, ours, isMate(ours) && ours.mate > 0 ? `it still mates, but in ${ours.mate}, not ${T.left - 1}.` : 'it lets the king escape.');
+    } else return wrong(mv.san, ours, isMate(ours) && ours.mate > 0 ? `it still mates, but in ${ours.mate + 1}, not ${T.left}.` : 'it lets the king escape.');
   } else {
     if (uciOf(mv) === p.best) return solved(`Found it: ${mv.san}, the engine's first choice.`, p.pv.slice(0, 6), p.before);
     setFeedback('info', 'Checking your move…');
@@ -855,7 +893,8 @@ async function userMove(m) {
     if (!r) return engineGone();
     const ours = neg(r.score);
     if (wc(ours) >= wc(p.before) - 0.1) return solved(`Found it: ${mv.san} also works (${fmt(forWhite(ours, p.color))}).`, [uciOf(mv), ...r.pv].slice(0, 6), ours);
-    wrong(mv.san, ours, p.played && uciOf(mv) === p.played.uci ? 'that is the move from the game.' : 'it still gives away too much.');
+    wrong(mv.san, ours, p.played && uciOf(mv) === p.played.uci ? 'that is the move from the game.'
+      : wc(ours) >= 0.3 ? `${sideName(p.color)} is still better, but the best move is much stronger.` : 'it still gives away too much.');
   }
 }
 const engineGone = () => setFeedback('bad', 'The engine stopped working, so this move cannot be checked. Reload the page to try again.');
@@ -864,7 +903,7 @@ const engineGone = () => setFeedback('bad', 'The engine stopped working, so this
 // score: the engine's score of that line, for the side to move in the puzzle.
 function solved(msg, line, score) {
   const p = T.p; T.mode = 'done';
-  if (!p.status || p.status === 'new') p.status = T.firstTry ? 'solved' : 'retry';
+  if (!p.status || p.status === 'new') { p.status = T.firstTry ? 'solved' : 'retry'; saveStatus(p) }
   setFeedback('good', msg, null, tacticNoteParts(p, line));
   openLines(line, score, p.type === 'mate' ? line.length : 1);
   renderList(); updateNav();
@@ -947,7 +986,11 @@ function renderStepper() {
     b.textContent = l.whole ? l.title : `${l.title}: ${l.parts.length ? l.parts[0].label : '…'}`; b.setAttribute('aria-pressed', String(l === L));
   }
   const ll = $('#lLine'); ll.textContent = '';
-  L.parts.forEach((x, k) => { const s = document.createElement('span'); s.textContent = x.text; if (k === L.i - 1) s.className = 'cur'; ll.append(s, ' ') });
+  L.parts.forEach((x, k) => { // a click goes to that move; the keyboard has the arrow keys, so the moves are not tab stops
+    const b = document.createElement('button'); b.type = 'button'; b.tabIndex = -1; b.textContent = x.text; b.title = x.label;
+    if (k === L.i - 1) b.className = 'cur';
+    b.onclick = () => step(k + 1); ll.append(b, ' ');
+  });
   const m0 = material(new Chess(L.fen)), m = material(T.chess);
   $('#lSum').innerHTML = `Engine eval ${L.whole ? 'here' : 'for this line'}: <b></b>. Material here: <b></b>`;
   const [ev, mat] = $('#lSum').querySelectorAll('b');
@@ -965,8 +1008,10 @@ $('#lEnd').onclick = () => step(T.line.moves.length);
 $('#autoplay').onchange = () => { store.set('drills.autoplay', autoplayOn() ? '1' : '0'); if (!T.line) return; if (autoplayOn()) autoplay(); else T.token++ };
 $('#autoplay').checked = store.get('drills.autoplay') === '1';
 document.addEventListener('keydown', e => {
-  const L = T.line; if (!L || e.altKey || e.ctrlKey || e.metaKey) return;
-  if (e.target.closest('textarea, select, input:not([type=checkbox])')) return;
+  if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest('textarea, select, input:not([type=checkbox])')) return;
+  const key = { h: '#bHint', s: '#bSol', r: '#bRetry', p: '#bPrev', n: '#bNext' }[e.key.toLowerCase()]; // see aria-keyshortcuts
+  if (key) { const b = $(key); if (!b.disabled && !b.hidden) { e.preventDefault(); b.click() } return }
+  const L = T.line; if (!L) return;
   const to = { ArrowLeft: L.i - 1, ArrowRight: L.i + 1, Home: 0, End: L.moves.length }[e.key];
   if (to === undefined) return;
   e.preventDefault(); step(to);
@@ -1063,12 +1108,13 @@ function findTactics(fen, line) {
     const k = moves.length - 1;
     if (k % 2 === 0 && k / 2 < TAC_MOVES) cands.push(...motifsAt(c, mv, moves[k - 1]).map(m => ({ ...m, ply: k })));
   }
+  const mates = moves.length % 2 === 1 && mate[moves.length]; // the attacker mates at the end of the line
   for (const m of cands) {
     const end = Math.min(moves.length - 1, m.ply + TAC_PAYOFF);
     for (let j = m.ply; j <= end; j++) {
       if (mate[j + 1] && m.targets.some(t => t.type === 'k')) return found(m, moves, { mate: j + 1 - m.ply });
       const mv = moves[j];
-      if ((j - m.ply) % 2 || !mv.captured || !m.targets.some(t => t.type !== 'k' && t.square === mv.to)) continue;
+      if (mates || (j - m.ply) % 2 || !mv.captured || !m.targets.some(t => t.type !== 'k' && t.square === mv.to)) continue;
       const gain = mat[Math.min(j + 2, moves.length)] - mat[m.ply];
       if (gain >= Math.min(TAC_GAIN, worth(mv.captured))) return found(m, moves, { wins: mv.captured });
     }
@@ -1082,6 +1128,7 @@ function found(m, moves, pay) {
 // Words for a tactic t from findTactics, e.g. 'forks the king and the rook on a8, and wins the rook'.
 const pieceAt = q => q.type === 'k' ? 'the king' : `the ${PNAME[q.type]} on ${q.square}`;
 const andList = xs => xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
+const orList = xs => xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' or ' + xs[xs.length - 1];
 function tacticWords(t) {
   const [a, b] = t.targets;
   const what = {
@@ -1129,10 +1176,11 @@ function tacticNoteParts(p, line) {
 const tacticNotes = (p, line) => tacticNoteParts(p, line).map(x => typeof x === 'string' ? x : x.label).join('');
 function showSolution() {
   const p = T.p; if (!p) return;
-  if (p.status !== 'solved' && p.status !== 'retry') p.status = 'revealed';
+  if (p.status !== 'solved' && p.status !== 'retry') { p.status = 'revealed'; saveStatus(p) }
   T.mode = 'show';
   setFeedback('info', 'Solution. Compare it with the game line below.', null, tacticNoteParts(p, p.pv));
   openLines(p.type === 'mate' ? p.pv : p.pv.slice(0, 6), p.before, 0, p.pv);
+  if (!autoplayOn()) lineGo(1); // play the solving move, so that the board shows it (autoplay plays it anyway)
   renderList(); updateNav();
 }
 function updateNav() {
@@ -1153,10 +1201,10 @@ function fitBoard() {
 // The trainer is sticky. When it is taller than the window, a negative top lets its bottom (the line and its buttons) come into view.
 function fitSticky() { fitBoard(); const tr = $('.trainer'); tr.style.top = Math.min(16, innerHeight - tr.offsetHeight - 16) + 'px' }
 new ResizeObserver(fitSticky).observe($('.trainer')); addEventListener('resize', fitSticky);
-$('#bNext').onclick = () => { T.userTouched = true; const vis = visible(); const vi = T.p ? vis.indexOf(T.p) : -1; if (vis[vi + 1]) loadPuzzle(S.puzzles.indexOf(vis[vi + 1])) };
-$('#bPrev').onclick = () => { T.userTouched = true; const vis = visible(); const vi = vis.indexOf(T.p); if (vi > 0) loadPuzzle(S.puzzles.indexOf(vis[vi - 1])) };
-$('#bRetry').onclick = () => { T.userTouched = true; loadPuzzle(S.current) };
-$('#bSol').onclick = () => { T.userTouched = true; showSolution() };
+$('#bNext').onclick = () => { const vis = visible(); const vi = T.p ? vis.indexOf(T.p) : -1; if (vis[vi + 1]) loadPuzzle(S.puzzles.indexOf(vis[vi + 1])) };
+$('#bPrev').onclick = () => { const vis = visible(); const vi = vis.indexOf(T.p); if (vi > 0) loadPuzzle(S.puzzles.indexOf(vis[vi - 1])) };
+$('#bRetry').onclick = () => loadPuzzle(S.current);
+$('#bSol').onclick = () => showSolution();
 $('#bHint').onclick = () => {
   if (!T.p || T.mode !== 'play') return;
   T.firstTry = false;
@@ -1175,9 +1223,17 @@ function secondHint(p, fen, pv) {
   if (a) return `The game move allowed ${tacticName(a)}. Find a move that stops it.`;
   return p.type === 'mate' ? 'No common tactic pattern here. Look at every check.' : 'No common tactic pattern here.';
 }
+// The Clipboard API can be blocked, for example without permission. Then copy the old way, from a selected textarea.
+function copyOld(text) {
+  const ta = document.createElement('textarea'), f = document.activeElement;
+  ta.value = text; ta.readOnly = true; ta.style.cssText = 'position:fixed;top:0;opacity:0';
+  document.body.appendChild(ta); ta.select();
+  try { return document.execCommand('copy') } catch { return false } finally { ta.remove(); if (f) f.focus() }
+}
 async function copyText(text, btn, ok) {
-  try { await navigator.clipboard.writeText(text); const o = btn.textContent; btn.textContent = ok; setTimeout(() => btn.textContent = o, 1600); $('#copyBox').hidden = true; return true }
-  catch { return false }
+  let done; try { await navigator.clipboard.writeText(text); done = true } catch { done = copyOld(text) }
+  if (!done) return false;
+  const o = btn.textContent; btn.textContent = ok; setTimeout(() => btn.textContent = o, 1600); $('#copyBox').hidden = true; return true;
 }
 $('#bFen').onclick = async () => {
   const fen = T.p ? T.p.fen : T.chess.fen();
@@ -1187,7 +1243,9 @@ const pgnTag = (name, value) => `[${name} "${String(value).replace(/[\\"]/g, '\\
 function studyPgn() {
   const h = S.game.headers || {};
   return visible().map((p, i) => {
-    const line = pvSan(p.fen, p.type === 'mate' ? p.pv : p.pv.slice(0, 5));
+    // An Interactive lesson asks for every move of the line. In the app, only the first move of a blunder or
+    // mistake counts, so its chapter has that one move, and the rest of the engine line is a comment.
+    const line = p.type === 'mate' ? pvSan(p.fen, p.pv) : `${pvSan(p.fen, p.pv.slice(0, 1))} {Engine line: ${pvSan(p.fen, p.pv.slice(0, 5))}}`;
     const ctx = `{In the game: ${moveLabel(p.played).replace('…', '...')}} `;
     return [pgnTag('Event', `Puzzle ${i + 1}: ${TYPE_LABEL(p)} (${sideName(p.color)} to move)`), pgnTag('White', h.White || '?'), pgnTag('Black', h.Black || '?'), pgnTag('Result', '*'), pgnTag('SetUp', '1'), pgnTag('FEN', p.fen), '', `${ctx}${line} *`].join('\n');
   }).join('\n\n\n');
@@ -1201,8 +1259,14 @@ $('#copyAll').onclick = async () => {
 /* ---------------- wiring ---------------- */
 $('#run').onclick = analyze;
 $('#sample').onclick = () => { $('#src').value = SAMPLE; analyze() };
+for (const id of ['depth', 'maxMate']) { // settings stay for the next visit
+  const el = $('#' + id), v = store.get('drills.' + id);
+  if ([...el.options].some(o => o.value === v)) el.value = v;
+  el.addEventListener('change', () => store.set('drills.' + id, el.value));
+}
+$('#mistakes').checked = store.get('drills.mistakes') === '1';
 $('#maxMate').onchange = () => { refreshPuzzles(); drawChart() };
-$('#mistakes').onchange = () => { refreshPuzzles(); drawChart() };
+$('#mistakes').onchange = () => { store.set('drills.mistakes', $('#mistakes').checked ? '1' : '0'); refreshPuzzles(); drawChart() };
 $('#src').value = store.get('drills.src') || SAMPLE;
 showPosition(START, null);
 drawChart();

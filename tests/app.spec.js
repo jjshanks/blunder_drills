@@ -174,18 +174,46 @@ test('dropping a piece on an illegal square puts it back', async ({ page }) => {
   await expect(page.locator('#fb')).toHaveClass(/info/);
 });
 
-test('Show solution marks the puzzle as revealed and opens the line at its start', async ({ page }) => {
+test('Show solution marks the puzzle as revealed and plays the solving move on the board', async ({ page }) => {
   await openAnalyzed(page);
   const p = await current(page);
   await page.locator('#bSol').click();
   await expect(page.locator('#fb')).toContainText('Solution');
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('Revealed');
-  await expect(page.locator('#lPos')).toHaveText(/^Start · /);
-  await expectBoardAt(page, p, p.pv, 0);
-  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#lPos')).toHaveText(/^Move 1 of \d+: /);
   await expectBoardAt(page, p, p.pv, 1);
+  await expect(page.locator(`#board .sq.last[data-sq="${p.best.slice(2, 4)}"]`)).toHaveCount(1);
+  await page.keyboard.press('ArrowLeft');
+  await expectBoardAt(page, p, p.pv, 0);
+  await page.locator('#lLine button').nth(2).click(); // a move in the line goes to that move
+  await expectBoardAt(page, p, p.pv, 3);
+  await expect(page.locator('#lPos')).toHaveText(/^Move 3 of /);
   await page.locator('#bNext').click();
   await expect(page.locator('#stepper')).toBeHidden();
+});
+
+test('keyboard shortcuts work the puzzle buttons', async ({ page }) => {
+  await openAnalyzed(page);
+  await page.keyboard.press('h');
+  await expect(page.locator('#fb')).toHaveText('Hint: move the highlighted piece. Press Hint again for the idea.');
+  await page.keyboard.press('n');
+  await expect(page.locator('#tcount')).toHaveText('Puzzle 2 of 6');
+  await page.keyboard.press('s');
+  await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('Revealed');
+  await page.keyboard.press('r');
+  await expect(page.locator('#stepper')).toBeHidden();
+  await page.keyboard.press('p');
+  await expect(page.locator('#tcount')).toHaveText('Puzzle 1 of 6');
+});
+
+test('a filter that hides the puzzle on the board opens the next one for that player', async ({ page }) => {
+  await openAnalyzed(page);
+  await page.locator('.pitem .mv', { hasText: '32… Kf8' }).click();
+  await page.getByRole('button', { name: 'Martin Reyes (White)' }).click();
+  await expect(page.locator('#prompt')).toHaveText('White to move. Mate in 2.'); // 33. d5, the next White puzzle
+  await expect(page.locator('#tcount')).toHaveText('Puzzle 2 of 2');
+  await expect(page.locator('#chart .mk')).toHaveCount(2);
+  await expect(page.locator('#bPrev')).toBeEnabled();
 });
 
 test('the second hint names the tactic, and the solution explains it', async ({ page }) => {
@@ -273,11 +301,13 @@ test('filters puzzles by player', async ({ page }) => {
 
 test('exports one valid Lichess study chapter per puzzle', async ({ page }) => {
   await openAnalyzed(page);
+  // The number of moves in each chapter, or 0 if the PGN does not load.
   const chapters = await page.evaluate(() => window.BlunderDrills.studyPgn().split('\n\n\n').map(ch => {
-    try { new window.BlunderDrills.Chess().loadPgn(ch); return true } catch { return false }
+    try { const c = new window.BlunderDrills.Chess(); c.loadPgn(ch); return c.history().length } catch { return 0 }
   }));
-  expect(chapters).toHaveLength(6);
-  expect(chapters.every(Boolean)).toBe(true);
+  // A blunder chapter has only the key move, as in the app: a Lichess lesson would ask for every move. The mate (33. d5) has its whole line.
+  expect(chapters).toEqual([1, 1, 1, 3, 1, 1]);
+  expect(await page.evaluate(() => window.BlunderDrills.studyPgn().split('\n\n\n')[0])).toMatch(/ \{Engine line: 20\.\.\. \S+ .+\} \*$/);
   // The Lichess tip shows under the button after a copy, not before.
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await expect(page.locator('#copyNote')).toBeHidden();
@@ -301,6 +331,46 @@ test('analyzes a pasted game that ends in checkmate and remembers it after reloa
   await expect(page.locator('#evalNow')).toHaveText('Checkmate · 1-0');
   await page.reload();
   await expect(page.locator('#src')).toHaveValue(/Qxf7#/);
+});
+
+test('a game with no puzzles says so after the analysis, and how to find more', async ({ page }) => {
+  await openAnalyzed(page);
+  await page.locator('#setup summary').click();
+  await page.locator('#src').fill('1. e4 e5 2. Nf3 Nc6 *');
+  await page.locator('#run').click();
+  await expect(page.locator('#prompt')).toHaveText('Finding puzzles…');
+  await expect(page.locator('#ptext')).toHaveText('Analysis complete', { timeout: 60_000 });
+  await expect(page.locator('#prompt')).toHaveText('No puzzles in this game');
+  await expect(page.locator('#fb')).toHaveText('The engine found no blunders or missed mates with these settings. To find more, turn on Include mistakes, allow longer missed mates or analyze again at a greater depth.');
+  await expect(page.locator('#summary')).toHaveText('No puzzles in this game with these settings.');
+  await expect(page.locator('#plist .empty')).toHaveCount(0);
+  await page.locator('#mistakes').check(); // a tip that is already on is not given
+  await expect(page.locator('#fb')).toHaveText('The engine found no blunders, mistakes or missed mates with these settings. To find more, allow longer missed mates or analyze again at a greater depth.');
+});
+
+test('remembers the settings, the player and the progress after a reload', async ({ page }) => {
+  await openAnalyzed(page);
+  const p = await current(page); // 20... Rb8, a Black puzzle
+  await play(page, p.best);
+  await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('✓ Solved');
+  await page.getByRole('button', { name: 'Priya Nair (Black)' }).click();
+  await page.locator('#maxMate').selectOption('3');
+  await page.locator('#depth').selectOption('10', { force: true });
+  await page.reload();
+  await expect(page.locator('#maxMate')).toHaveValue('3');
+  await expect(page.locator('#depth')).toHaveValue('10');
+  await expect(page.getByRole('button', { name: 'Priya Nair (Black)' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#ptext')).toHaveText('Analysis complete', { timeout: 90_000 });
+  // The analysis ran at depth 10, but the progress belongs to the game, so it stays.
+  await expect(page.locator('.pitem', { hasText: '20… Rb8' }).locator('.st')).toHaveText('✓ Solved');
+});
+
+test('Copy FEN says Copied even when the browser blocks the Clipboard API', async ({ page }) => {
+  await openAnalyzed(page);
+  await page.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('blocked')) });
+  await page.locator('#bFen').click();
+  await expect(page.locator('#bFen')).toHaveText('Copied');
+  await expect(page.locator('#copyBox')).toBeHidden();
 });
 
 test('fits the board and the puzzle actions in a short desktop window', async ({ page }) => {
