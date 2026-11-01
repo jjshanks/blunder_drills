@@ -71,10 +71,9 @@ header.top { grid-area: head }
 .in { grid-area: input } .chartp { grid-area: chart } .listp { grid-area: list }
 /* No cards in the left column: a line divides the sections. */
 .in, .chartp, .listp { background: none; border: 0; border-radius: 0; padding: 20px 0 0; border-top: 1px solid var(--line) }
-/* TRIAL B: the trainer has no card either. On a phone, a line divides it like the other sections. */
-:root[data-cards="b"] .trainer { background: none; border: 0; padding: 0 }
-@media (max-width: 920px) { :root[data-cards="b"] .trainer { padding-top: 20px; border-top: 1px solid var(--line); border-radius: 0 } }
-.trial { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px } /* TRIAL: remove after the choice */
+/* The trainer has no card either: only the board has a frame. On a phone, a line divides it like the other sections. */
+.trainer { background: none; border: 0; padding: 0 }
+@media (max-width: 920px) { .trainer { padding-top: 20px; border-top: 1px solid var(--line); border-radius: 0 } }
 .trainer { grid-area: trainer; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px) } /* script: a negative top when the panel is taller than the window */
 @media (max-width: 920px) { .trainer { position: static } }
 
@@ -222,7 +221,6 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
         <p class="tag">Paste a game. Get back the moves you’d rather forget, as puzzles.</p>
       </div>
       <div class="engine" id="engine"><i></i><span id="engineText">Loading Stockfish 18…</span></div>
-      <label class="trial">Cards (trial) <select id="cardsTrial"><option value="a">A: left column flat</option><option value="b">B: all flat, board framed</option></select></label>
     </header>
 
     <section class="panel in" aria-labelledby="h-in">
@@ -1185,9 +1183,6 @@ $('#copyAll').onclick = async () => {
 };
 
 /* ---------------- wiring ---------------- */
-// TRIAL: compare two card styles. ?cards=b in the address opens B. Remove after the choice.
-{ const sel = $('#cardsTrial'), set = v => { document.documentElement.dataset.cards = v; sel.value = v };
-  set(new URLSearchParams(location.search).get('cards') === 'b' ? 'b' : 'a'); sel.onchange = () => set(sel.value) }
 $('#run').onclick = analyze;
 $('#sample').onclick = () => { $('#src').value = SAMPLE; analyze() };
 $('#maxMate').onchange = () => { refreshPuzzles(); drawChart() };
