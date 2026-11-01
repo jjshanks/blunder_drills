@@ -136,7 +136,7 @@ test('rejects the game move, resets the board, then counts a later solve as a re
   await expect(page.locator('#bHint')).toBeEnabled(); // the buttons follow the board back to play
   await expectGameMoveArrow(page, p);
   await play(page, p.best);
-  await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('Solved after retry');
+  await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('✓ retry');
 });
 
 test('plays out the missed mate in 2 against the engine', async ({ page }) => {
@@ -278,6 +278,12 @@ test('exports one valid Lichess study chapter per puzzle', async ({ page }) => {
   }));
   expect(chapters).toHaveLength(6);
   expect(chapters.every(Boolean)).toBe(true);
+  // The Lichess tip shows under the button after a copy, not before.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await expect(page.locator('#copyNote')).toBeHidden();
+  await page.locator('#copyAll').click();
+  await expect(page.locator('#copyNote')).toBeVisible();
+  await expect(page.locator('#copyBox')).toBeHidden();
 });
 
 test('analyzes a pasted game that ends in checkmate and remembers it after reload', async ({ page }) => {
@@ -292,7 +298,7 @@ test('analyzes a pasted game that ends in checkmate and remembers it after reloa
   await expect(page.locator('#pmeta')).toHaveText(/^ · 8 positions/, { timeout: 60_000 });
   await expect(page.locator('#ptext')).toHaveText('Analysis complete');
   await expect(page.locator('.pitem .mv')).toContainText(['3… Nf6']);
-  await expect(page.locator('#evalNow')).toHaveText('Final 1-0');
+  await expect(page.locator('#evalNow')).toHaveText('Checkmate · 1-0');
   await page.reload();
   await expect(page.locator('#src')).toHaveValue(/Qxf7#/);
 });

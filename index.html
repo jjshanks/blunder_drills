@@ -19,7 +19,8 @@
 /* Layout: two-column workbench — header, game, eval graph and puzzle list on the left; a sticky training board on the right,
    from the top of the page, sized so that the board and its actions fit in a short window. Stacks on phones, board after the game. */
 /* Colors: a navy and gold board (#00296b #003f88 #00509d #fdc500 #ffd500) on warm neutrals. Gold marks the last move.
-   Blue is for actions and links only. Category and result colors are separate. --soft is only for ink text. */
+   Blue is for actions and links only. Category and result colors are separate. --soft is only for ink text.
+   The chart is warm grey (--adv-w below the line, --adv-b above it), so that the board is the only navy block. */
 :root {
   --bg: #f7f5f1; --surface: #fdfcfa; --ink: #1d1c1a; --muted: #5c5850; --line: #e0dcd3; --soft: #eeeae3;
   --accent: #00509d; --accent-ink: #ffffff; --accent-soft: #dce7f4;
@@ -27,7 +28,7 @@
   --hl-last: rgba(253, 197, 0, .6); --hl-sel: rgba(0, 80, 157, .45); --dot: rgba(0, 41, 107, .32); --hint: #ffd500;
   --mate: #7a3fc4; --blunder: #c2410c; --mistake: #a16207;
   --good: #1f7a4d; --bad: #b42318;
-  --adv-w: #f7f9fc; --adv-b: #00296b;
+  --adv-w: #fdfcfa; --adv-b: #cdc8be;
   --f-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -41,7 +42,7 @@
   --hl-last: rgba(253, 197, 0, .5); --hl-sel: rgba(110, 168, 232, .5); --dot: rgba(0, 15, 40, .4);
   --mate: #b48cf0; --blunder: #f08a5d; --mistake: #e0b450;
   --good: #5fd39a; --bad: #f2867a;
-  --adv-w: #dfe6f0; --adv-b: #050c18;
+  --adv-w: #d6d1c7; --adv-b: #3d3a35;
   color-scheme: dark } }
 
 * { box-sizing: border-box }
@@ -126,7 +127,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .seg button:last-child { border-right: 0 }
 .seg button[aria-pressed="true"] { background: var(--soft); font-weight: 600 }
 .plist { display: grid; list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line) } /* rows, not cards */
-.pitem { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; text-align: left; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent; cursor: pointer }
+.pitem { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent; cursor: pointer }
 .pitem:hover { background: var(--surface) }
 .pitem[aria-current="true"] { background: var(--surface); box-shadow: inset 3px 0 0 var(--ink) } /* the puzzle on the board */
 .pitem .mv { font-family: var(--f-mono); font-size: 13.5px; font-variant-numeric: tabular-nums }
@@ -134,10 +135,14 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .kind { font-weight: 700; margin-left: 1px }
 .kind.mate { font-weight: 600; font-size: 13px; margin-left: 8px }
 .kind.mate { color: var(--mate) } .kind.blunder { color: var(--blunder) } .kind.mistake { color: var(--mistake) }
-.pitem .who { color: var(--muted); font-size: 13.5px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-@media (max-width: 520px) { .pitem .who { white-space: normal } } /* wrap: keep the eval change in view */
+/* The side that played the move: a small white or black square, as on a scoresheet. Fixed colors, so that black stays black in dark mode. */
+.pitem .side { width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--muted) }
+.pitem .side.w { background: #fff } .pitem .side.b { background: #1d1c1a }
+.pitem .line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.pitem .ev { color: var(--muted); font-size: 13.5px }
+@media (max-width: 520px) { .pitem .line { white-space: normal } } /* wrap: keep the eval change in view */
 .st { font-size: 12px; font-weight: 600; white-space: nowrap }
-.st.solved { color: var(--good) } .st.retry { color: var(--mistake) } .st.revealed { color: var(--bad) } .st.new { color: var(--muted); font-weight: 400 }
+.st.solved { color: var(--good); font-size: 14px } .st.retry { color: var(--mistake) } .st.revealed { color: var(--bad) }
 .empty { color: var(--muted); font-size: 14px; margin: 0; padding: 14px; border: 1px dashed var(--line); border-radius: var(--r) }
 
 .thead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap }
@@ -160,7 +165,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .trainer { --chrome: 210px; --bw: max(320px, calc(100svh - var(--chrome))) }
 .trainer > * { width: 100%; max-width: var(--bw); justify-self: center }
 
-.bframe { display: grid; grid-template-columns: 4.2cqi minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 4.2cqi; width: 100%; max-width: 100%; padding: 1.6cqi 1.6cqi 0 0; background: var(--frame); border-radius: var(--r); box-shadow: 0 18px 40px -24px rgba(0,0,0,.6) }
+.bframe { display: grid; grid-template-columns: 4.2cqi minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 4.2cqi; width: 100%; max-width: 100%; padding: 1.6cqi 1.6cqi 0 0; background: var(--frame); border-radius: var(--r); box-shadow: 0 4px 12px -8px rgba(0,0,0,.4) }
 .bwrap { container-type: inline-size; width: 100% }
 .ranks, .files { display: grid; font-family: var(--f-mono); font-size: 2.4cqi; font-weight: 500; color: var(--frame-ink); user-select: none; -webkit-user-select: none }
 .ranks { grid-template-rows: repeat(8, 1fr); place-items: center }
@@ -289,7 +294,12 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
     </section>
 
     <section class="panel listp" aria-labelledby="h-list">
-      <div class="thead"><h2 id="h-list">Puzzles</h2><button class="btn" id="copyAll" disabled>Copy as Lichess study PGN</button></div>
+      <div class="thead"><h2 id="h-list">Puzzles</h2><button class="btn" id="copyAll" disabled title="One chapter for each puzzle, for a Lichess Study">Copy as Lichess study PGN</button></div>
+      <p class="note" id="copyNote" hidden>Copied. In a Lichess Study, paste it under Add chapter → PGN, then set each chapter to Interactive lesson.</p>
+      <div id="copyBox" hidden>
+        <p class="note">Your browser blocked the clipboard. Select the text below and copy it, then paste into a Lichess Study with Add chapter → PGN.</p>
+        <textarea class="copyout" id="copyOut" readonly></textarea>
+      </div>
       <p class="summary" id="summary">Puzzles appear here as the engine finds them.</p>
       <div class="seg" id="who" role="group" aria-label="Whose moves"></div>
       <div class="filters">
@@ -298,11 +308,6 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
         <label class="check"><input type="checkbox" id="mistakes"> Include mistakes</label>
       </div>
       <ul class="plist" id="plist"></ul>
-      <div id="copyBox" hidden>
-        <p class="note">Your browser blocked the clipboard. Select the text below and copy it, then paste into a Lichess Study with Add chapter → PGN.</p>
-        <textarea class="copyout" id="copyOut" readonly></textarea>
-      </div>
-      <p class="note">Tip: in a Lichess Study, paste this under Add chapter → PGN, then set each chapter to Interactive lesson.</p>
     </section>
   </div>
   <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, CC BY-SA 3.0.</p>
@@ -514,7 +519,7 @@ async function analyze() {
   setProgress(1, 'Analysis complete'); $('#prog').classList.add('done');
   $('#pmeta').textContent = ` · ${n} position${n > 1 ? 's' : ''} at depth ${depth} in ${secs}s`;
   const last = S.evals[n - 1];
-  if (last) $('#evalNow').textContent = 'Final ' + fmt(forWhite(last.score, game.positions[n - 1].split(' ')[1]));
+  if (last) { const e = forWhite(last.score, game.positions[n - 1].split(' ')[1]); $('#evalNow').textContent = (isMate(e) && e.mate === 0 ? 'Checkmate · ' : 'End ') + fmt(e) }
   if (!S.puzzles.length) setFeedback('info', 'No blunders or missed mates found with these settings. Try "Include mistakes" or a deeper search.');
 }
 // One line for the loaded game, for example "Martin Reyes vs Priya Nair · 1-0 · 44 moves".
@@ -595,11 +600,12 @@ function renderList() {
     const li = document.createElement('li');
     const b = document.createElement('button'); b.className = 'pitem'; b.type = 'button';
     if (idx === S.current) b.setAttribute('aria-current', 'true');
-    const st = { new: ['new', 'To do'], solved: ['solved', '✓ Solved'], retry: ['retry', 'Solved after retry'], revealed: ['revealed', 'Revealed'] }[p.status || 'new'];
-    const mv = moveLabel(p.played);
-    b.innerHTML = `<span><span class="mv"></span><span class="who"></span></span><span class="st ${st[0]}">${st[1]}</span>`;
-    b.querySelector('.mv').textContent = mv; b.querySelector('.mv').after(kindEl(p));
-    b.querySelector('.who').textContent = `Played by ${playerName(p.color)} · ${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))}`;
+    // The status: [class, visible text, text for screen readers only]. A puzzle not yet tried shows nothing.
+    const st = { new: ['new', '', 'Not tried'], solved: ['solved', '✓', ' Solved'], retry: ['retry', '✓ retry', ''], revealed: ['revealed', 'Revealed', ''] }[p.status || 'new'];
+    b.innerHTML = `<span class="side ${p.color}"><span class="vh"></span></span><span class="line"><span class="mv"></span><span class="ev"></span></span><span class="st ${st[0]}">${st[1]}<span class="vh">${st[2]}</span></span>`;
+    b.querySelector('.side').title = `${playerName(p.color)} (${sideName(p.color)})`; b.querySelector('.side .vh').textContent = `${playerName(p.color)}: `;
+    b.querySelector('.mv').textContent = moveLabel(p.played); b.querySelector('.mv').after(kindEl(p));
+    b.querySelector('.ev').textContent = ` · ${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))}`;
     b.onclick = () => { T.userTouched = true; loadPuzzle(idx) };
     li.appendChild(b); ul.appendChild(li);
   }
@@ -1188,7 +1194,8 @@ function studyPgn() {
 }
 $('#copyAll').onclick = async () => {
   const text = studyPgn();
-  if (!await copyText(text, $('#copyAll'), 'Copied PGN')) { $('#copyOut').value = text; $('#copyBox').hidden = false; $('#copyOut').select() }
+  const ok = await copyText(text, $('#copyAll'), 'Copied PGN'); $('#copyNote').hidden = !ok;
+  if (!ok) { $('#copyOut').value = text; $('#copyBox').hidden = false; $('#copyOut').select() }
 };
 
 /* ---------------- wiring ---------------- */
