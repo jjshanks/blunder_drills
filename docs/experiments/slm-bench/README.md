@@ -3,6 +3,7 @@
 This harness measures how fast a small language model runs in Chromium on the CPU (WASM). It also shows the raw output of the model for one coaching prompt. The results are in Appendix A of `docs/review-coach-plan.md`.
 
 - `prompt.json`: the test prompt. It is the 18...Rfb8 moment from a real game review, written as a fact card (524 Qwen3 tokens).
+  The player's note in it is now made-up text with the same claims. The results in Appendix A are from the original note.
 - `page.html` + `bench.mjs`: Transformers.js 4.3.2 (ONNX Runtime Web, WASM).
 - `wpage.html` + `wbench.mjs`: wllama 3.8.1 (llama.cpp WASM, GGUF), CPU only (`n_gpu_layers: 0`).
 - `serve.mjs`: serves the pages in two modes.
