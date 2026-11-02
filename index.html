@@ -354,7 +354,7 @@ const SAMPLE = `[Event "Club Rapid"]
 
 const store = {
   get(k) { try { return localStorage.getItem(k) } catch { return null } },
-  set(k, v) { try { localStorage.setItem(k, v) } catch {} }
+  set(k, v) { try { localStorage.setItem(k, v) } catch { /* storage is blocked or full: the page works, but forgets */ } }
 };
 
 /* ---------------- scores ---------------- */
@@ -484,7 +484,7 @@ function parseInput(raw) {
   const g = new Chess();
   try { g.loadPgn(cleanPgn(txt)) } catch (e) {
     const bad = /Invalid move in PGN: (\S+)/.exec(e.message); // chess.js names the first move it cannot play
-    throw new Error(bad ? `Could not play the move ${bad[1]}. Check it for a typo or an illegal move.` : 'Could not read that PGN. Check the move list for typos or illegal moves.');
+    throw new Error(bad ? `Could not play the move ${bad[1]}. Check it for a typo or an illegal move.` : 'Could not read that PGN. Check the move list for typos or illegal moves.', { cause: e });
   }
   const headers = g.getHeaders();
   const hist = g.history({ verbose: true });

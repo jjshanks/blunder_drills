@@ -5,9 +5,14 @@
   "type": "module",
   "scripts": {
     "start": "node tests/serve.mjs",
+    "lint": "eslint .",
     "test": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.1"
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "eslint": "^10.13.0",
+    "eslint-plugin-html": "^8.2.1",
+    "globals": "^17.13.0"
   }
 }

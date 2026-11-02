@@ -33,6 +33,7 @@ npx playwright install --only-shell chromium
 Then run:
 
 ```sh
+npm run lint     # ESLint: index.html, the tests and the scripts
 npm test
 ```
 
@@ -43,13 +44,13 @@ npm test
 
 The page exposes its pure functions on `window.BlunderDrills` for these tests.
 
-GitHub Actions runs `npm test` on each push to `main` and on each pull request
+GitHub Actions runs `npm run lint` and `npm test` on each push to `main` and on each pull request
 (`.github/workflows/ci.yml`). The actions are pinned to commit SHAs. Dependabot
 (`.github/dependabot.yml`) proposes updates each week.
 
 ## Publish
 
-GitHub Pages serves the site. After the tests pass on `main`, the `deploy` job in
+GitHub Pages serves the site. After lint and the tests pass on `main`, the `deploy` job in
 `.github/workflows/ci.yml` publishes only `index.html`. The docs, tests and
 experiments are not on the site.
 
