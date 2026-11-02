@@ -20,6 +20,16 @@ async function pasteGame(page, text) {
   await page.evaluate(t => navigator.clipboard.writeText(t), text);
   await page.locator('#paste').click();
 }
+// Let count.js count on 127.0.0.1, and catch what it sends. Returns the hits as { p: path or event, e: 'true' for an event, no e for a page view }.
+async function catchGoatCounter(page) {
+  const hits = [];
+  await page.addInitScript(() => { window.goatcounter = { allow_local: true } });
+  await page.route('https://blunderdrills.goatcounter.com/**', route => {
+    hits.push(Object.fromEntries(new URL(route.request().url()).searchParams)); route.fulfill({ status: 204 });
+  });
+  return hits;
+}
+const events = hits => hits.filter(h => h.e === 'true').map(h => h.p);
 async function play(page, uci) {
   await page.locator(`.sq[data-sq="${uci.slice(0, 2)}"]`).click();
   await page.locator(`.sq[data-sq="${uci.slice(2, 4)}"]`).click();
@@ -59,6 +69,7 @@ test('analyzes the sample game into the expected puzzles', async ({ page }) => {
 });
 
 test('solves a blunder puzzle on the first try, then steps through the engine line', async ({ page }) => {
+  const hits = await catchGoatCounter(page);
   await openAnalyzed(page);
   const p = await current(page);
   await expectGameMoveArrow(page, p);
@@ -68,6 +79,7 @@ test('solves a blunder puzzle on the first try, then steps through the engine li
   await expect(page.locator('#fb')).toContainText('Found it: ');
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('✓ Solved');
   await expect(page.locator('#summary')).toContainText('Solved on first try: 1.');
+  await expect.poll(() => events(hits)).toEqual(['puzzle-solved']);
 
   // Autoplay is off: the board stays after the solving move.
   const line = p.pv.slice(0, 6), n = line.length;
@@ -181,6 +193,7 @@ test('autoplay stays on for the next puzzle, and is off again after a reload', a
 });
 
 test('rejects the game move, resets the board, then counts a later solve as a retry', async ({ page }) => {
+  const hits = await catchGoatCounter(page);
   await openAnalyzed(page);
   const p = await current(page);
   await expect(page.locator('#bRetry')).toBeHidden(); // nothing to retry before a move
@@ -196,6 +209,7 @@ test('rejects the game move, resets the board, then counts a later solve as a re
   await expectGameMoveArrow(page, p);
   await play(page, p.best);
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('✓ retry');
+  await expect.poll(() => events(hits)).toEqual(['puzzle-solved-retry']);
 });
 
 test('plays out the missed mate in 2 against the engine', async ({ page }) => {
@@ -527,10 +541,37 @@ test('falls back to the asm.js engine when the WebAssembly build fails', async (
 });
 
 test('reports an engine that cannot load', async ({ page }) => {
+  const hits = await catchGoatCounter(page);
   await page.route('https://unpkg.com/**', route => route.abort());
   await page.goto('/');
   await expect(page.locator('#engineText')).toHaveText('Engine failed to load');
   await expect(page.locator('#err')).toContainText('Stockfish could not start');
+  // The engine can fail before count.js loads. The event waits for it.
+  await expect.poll(() => events(hits)).toEqual(['engine-load-failed']);
+});
+
+test('counts the visit and the events in GoatCounter, once each, with no game data', async ({ page }) => {
+  const hits = await catchGoatCounter(page);
+  await openAnalyzed(page);
+  await expect.poll(() => hits.filter(h => !h.e).map(h => h.p)).toEqual(['/']); // the page view (count.js sends no e=false)
+  expect(events(hits)).toEqual([]); // the game that opens with the page is not counted
+  await page.locator('#bSol').click();
+  await page.locator('#bSol').click(); // a second look at the same solution is not counted again
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.locator('#copyAll').click();
+  await pasteGame(page, '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0');
+  await expect(page.locator('#pmeta')).toHaveText(/^ · 8 positions/, { timeout: 60_000 });
+  await expect.poll(() => events(hits)).toEqual(['puzzle-revealed', 'study-copied', 'game-pasted', 'analysis-done']);
+  for (const h of hits) expect(Object.values(h).join(' ')).not.toMatch(/Qxf7|Nf6|Martin|Priya/);
+});
+
+test('works the same when GoatCounter is blocked', async ({ page }) => {
+  await page.route('https://gc.zgo.at/**', route => route.abort());
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await openAnalyzed(page);
+  await page.locator('#bSol').click();
+  await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('Revealed');
+  expect(errors).toEqual([]);
 });
 
 test('runs when index.html is opened from disk', async ({ page }) => {

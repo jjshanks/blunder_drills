@@ -38,6 +38,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <script type="importmap">{ "integrity": { "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js": "sha384-A9KE46F70Ao1BUdhGSxgP0+9OhPjBrpf6gsBehqG12SbeKbFWnO7bwtNT68I4xKh" } }</script>
+<!-- Visit counts: GoatCounter, no cookies. It does not count from localhost or 127.*. If it is blocked, the page works the same. -->
+<script id="gc" data-goatcounter="https://blunderdrills.goatcounter.com/count" async src="https://gc.zgo.at/count.v5.js" crossorigin="anonymous" integrity="sha384-atnOLvQb9t+jTSipvd75X2yginT4PjVbqDdlJAmxMm+wYElFmeR6EmLP5bYeoRVQ"></script>
 <style>
 /* Layout: two-column workbench — header, game, eval graph and puzzle list on the left; a sticky training board on the right,
    from the top of the page, sized so that the board and its actions fit in a short window. Stacks on phones, board after the game. */
@@ -332,7 +334,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       <ul class="plist" id="plist"></ul>
     </section>
   </div>
-  <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, BSD 3-Clause License.</p>
+  <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, BSD 3-Clause License. Visits are counted with <a href="https://www.goatcounter.com">GoatCounter</a> (no cookies; your games are not sent).</p>
 </div>
 
 <script type="module">
@@ -356,6 +358,16 @@ const store = {
   get(k) { try { return localStorage.getItem(k) } catch { return null } },
   set(k, v) { try { localStorage.setItem(k, v) } catch { /* storage is blocked or full: the page works, but forgets */ } }
 };
+
+// Count an event in GoatCounter. Only the event name is sent, never a game or a move. An event from before
+// count.js loads waits for it. If count.js is blocked, nothing is sent and the page works the same.
+const gcWaiting = [];
+function track(name) {
+  const gc = window.goatcounter;
+  if (!gc || typeof gc.count !== 'function') { gcWaiting.push(name); return }
+  try { gc.count({ path: name, event: true }) } catch { /* for example, storage is blocked: no count */ }
+}
+document.getElementById('gc')?.addEventListener('load', () => gcWaiting.splice(0).forEach(track));
 
 /* ---------------- scores ---------------- */
 // Scores are from the side-to-move's point of view: {cp} or {mate:n}. A finished checkmate is {mate:0, lost:true}.
@@ -406,7 +418,7 @@ const Engine = {
     this.ready = bootBuild(SF_BUILDS[0])
       .catch(() => { this.status('Loading compatibility engine (slower)…'); return bootBuild(SF_BUILDS[1]) })
       .then(() => { this.status(this.name + ' ready', 'ok'); this.pump() })
-      .catch(e => { this.status('Engine failed to load', 'err'); throw e });
+      .catch(e => { this.status('Engine failed to load', 'err'); track('engine-load-failed'); throw e });
     return this.ready;
   },
   boot(url, ms) {
@@ -434,7 +446,7 @@ const Engine = {
   // The worker crashed after start-up. Tell the user, and answer every waiting request with null.
   fail() {
     this.dead = true; this.w.terminate(); this.w = null;
-    this.status('Engine stopped working', 'err');
+    this.status('Engine stopped working', 'err'); track('engine-stopped');
     $('#err').textContent = 'Stockfish stopped working. Reload the page to try again.'; $('#err').hidden = false;
     for (const j of [this.cur, ...this.queue]) if (j) j.res(null);
     this.cur = null; this.queue = [];
@@ -511,10 +523,12 @@ function playerName(c) { const h = S.game && S.game.headers || {}; const n = c =
 
 /* ---------------- analysis ---------------- */
 // src: the PGN text. If it is not a valid game, show an error and keep the current game.
-async function analyze(src) {
+// pasted: the user pasted this game. Only a pasted game is counted, not the game that opens with the page.
+async function analyze(src, pasted) {
   $('#err').hidden = true;
   let game;
   try { game = parseInput(src) } catch (e) { showErr(e.message); return }
+  if (pasted) track('game-pasted');
   store.set('drills.src', src); S.src = src;
   const run = ++S.run;
   const depth = +$('#depth').value;
@@ -542,6 +556,7 @@ async function analyze(src) {
   const last = S.evals[n - 1];
   if (last) { const e = forWhite(last.score, game.positions[n - 1].split(' ')[1]); $('#evalNow').textContent = (isMate(e) && e.mate === 0 ? 'Checkmate · ' : 'End ') + fmt(e) }
   S.done = true; renderList(); syncBoard();
+  if (pasted) track('analysis-done');
 }
 // The engine result for a position, as Engine.analyse gives it. A game that is over needs no search.
 function evalPosition(fen, depth, urgent) {
@@ -573,7 +588,7 @@ async function pasteGame() {
   let text;
   try { text = await navigator.clipboard.readText() } catch { return showErr('The browser did not let the page read the clipboard. Allow clipboard access for this page, then try again.') }
   if (!text.trim()) return showErr('The clipboard is empty. Copy a game in PGN format, then click Paste game.');
-  analyze(text);
+  analyze(text, true);
 }
 function setProgress(f, text) { $('#barFill').style.width = (f * 100).toFixed(1) + '%'; $('#ptext').textContent = text }
 
@@ -967,7 +982,7 @@ const engineGone = () => setFeedback('bad', 'The engine stopped working, so this
 // engine: the engine's first-choice line, when the solver found another good move.
 function solved(msg, line, score, engine) {
   const p = T.p; T.mode = 'done';
-  if (!p.status || p.status === 'new') { p.status = T.firstTry ? 'solved' : 'retry'; saveStatus(p) }
+  if (!p.status || p.status === 'new') { p.status = T.firstTry ? 'solved' : 'retry'; saveStatus(p); track(T.firstTry ? 'puzzle-solved' : 'puzzle-solved-retry') }
   setFeedback('good', msg, null, tacticNoteParts(p, line));
   openLines(line, score, p.type === 'mate' ? line.length : 1, line, engine);
   renderList(); updateNav();
@@ -1285,7 +1300,7 @@ function tacticNoteParts(p, line) {
 const tacticNotes = (p, line) => tacticNoteParts(p, line).map(x => typeof x === 'string' ? x : x.label).join('');
 function showSolution() {
   const p = T.p; if (!p) return;
-  if (p.status !== 'solved' && p.status !== 'retry') { p.status = 'revealed'; saveStatus(p) }
+  if (p.status !== 'solved' && p.status !== 'retry') { if (p.status !== 'revealed') track('puzzle-revealed'); p.status = 'revealed'; saveStatus(p) }
   T.mode = 'show';
   setFeedback('info', 'Solution. Compare it with the game line below.', null, tacticNoteParts(p, p.pv));
   openLines(p.type === 'mate' ? p.pv : p.pv.slice(0, 6), p.before, 0, p.pv);
@@ -1360,7 +1375,7 @@ function studyPgn() {
   }).join('\n\n\n');
 }
 $('#copyAll').onclick = async () => {
-  const text = studyPgn();
+  const text = studyPgn(); track('study-copied');
   const ok = await copyText(text, $('#copyAll'), 'Copied PGN'); $('#copyNote').hidden = !ok;
   if (!ok) { $('#copyOut').value = text; $('#copyBox').hidden = false; $('#copyOut').select() }
 };
