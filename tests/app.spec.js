@@ -112,13 +112,19 @@ test('compares the better line with the game line', async ({ page }) => {
   await expectBoardAt(page, p, p.pv, 2);
 });
 
-test('remembers autoplay and then plays the line after a solve', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('drills.autoplay', '1'));
+test('autoplay stays on for the next puzzle, and is off again after a reload', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('drills.autoplay', '1')); // a value from an older version: not used
   await openAnalyzed(page);
-  await expect(page.locator('#autoplay')).toBeChecked();
+  await play(page, (await current(page)).best);
+  await expect(page.locator('#autoplay')).not.toBeChecked();
+  await page.locator('#autoplay').check();
+  await page.locator('#bNext').click();
   const p = await current(page);
   await play(page, p.best);
   await expectBoardAt(page, p, p.pv.slice(0, 6), Math.min(6, p.pv.length));
+  await page.reload();
+  await expect(page.locator('#ptext')).toHaveText('Analysis complete', { timeout: 90_000 });
+  await expect(page.locator('#autoplay')).not.toBeChecked();
 });
 
 test('rejects the game move, resets the board, then counts a later solve as a retry', async ({ page }) => {
@@ -320,7 +326,9 @@ test('analyzes a pasted game that ends in checkmate and remembers it after reloa
   await openAnalyzed(page);
   await expect(page.locator('#gsum')).toHaveText('Martin Reyes vs Priya Nair · 1-0 · 44 moves');
   await expect(page.locator('#src')).toBeHidden(); // the PGN folds away while you train
-  await page.locator('#setup summary').click();
+  await expect(page.locator('#edit')).toHaveAttribute('aria-expanded', 'false');
+  await page.locator('#edit').click();
+  await expect(page.locator('#edit')).toHaveAttribute('aria-expanded', 'true');
   await page.locator('#src').fill('1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0');
   await page.locator('#run').click();
   await expect(page.locator('#src')).toBeHidden();
@@ -335,7 +343,7 @@ test('analyzes a pasted game that ends in checkmate and remembers it after reloa
 
 test('a game with no puzzles says so after the analysis, and how to find more', async ({ page }) => {
   await openAnalyzed(page);
-  await page.locator('#setup summary').click();
+  await page.locator('#edit').click();
   await page.locator('#src').fill('1. e4 e5 2. Nf3 Nc6 *');
   await page.locator('#run').click();
   await expect(page.locator('#prompt')).toHaveText('Finding puzzles…');
@@ -388,7 +396,7 @@ test('fits the board and the puzzle actions in a short desktop window', async ({
 
 test('shows an error for a bare FEN', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#setup summary').click();
+  await page.locator('#edit').click();
   await page.locator('#src').fill('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
   await page.locator('#run').click();
   await expect(page.locator('#err')).toBeVisible();

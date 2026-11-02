@@ -118,15 +118,17 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
 .err { color: var(--bad); font-size: 14px; margin: 0 }
 
-/* Game panel: a one-line summary once a game is loaded; the PGN and the engine depth fold away under "Edit game". */
+/* Game panel: a thin bar once a game is loaded (the summary, "Edit game" and one status line); the PGN and the engine depth fold away under "Edit game". */
+.in { gap: 4px; padding-top: 14px }
+.gbar { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: space-between }
 .gsum { margin: 0; font-weight: 500; overflow-wrap: anywhere }
 .gsum span { color: var(--muted); font-weight: 400 }
-.setup { display: grid; gap: 14px }
-.setup > summary { justify-self: start; list-style: none; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--accent); padding: 2px 0 }
-.setup > summary::-webkit-details-marker { display: none }
-.setup > summary::before { content: "▸"; display: inline-block; width: 1em; transition: transform .15s }
-.setup[open] > summary::before { transform: rotate(90deg) }
-@media (prefers-reduced-motion: reduce) { .setup > summary::before { transition: none } }
+.gedit { border: 0; background: none; padding: 2px 0; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--accent); white-space: nowrap }
+.gedit::before { content: "▸"; display: inline-block; width: 1em; transition: transform .15s }
+.gedit[aria-expanded="true"]::before { transform: rotate(90deg) }
+@media (prefers-reduced-motion: reduce) { .gedit::before { transition: none } }
+.setup { display: grid; gap: 14px; padding: 10px 0 6px }
+.setup[hidden] { display: none }
 .filters { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center }
 .filters .field { display: flex; align-items: center; gap: 8px; font-size: 14px }
 .filters .check { padding-bottom: 0 }
@@ -136,7 +138,6 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .25s }
 .ptext { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums }
 .progress.done .bar { display: none } /* when the analysis is complete, only the line of text stays */
-.progress.done #ptext { color: var(--ink); font-weight: 500 }
 
 .chart { width: 100%; height: auto; display: block; overflow: visible }
 .chart text { font-size: 10px; fill: var(--muted); font-variant-numeric: tabular-nums }
@@ -254,10 +255,12 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
     </header>
 
     <section class="panel in" aria-labelledby="h-in">
-      <h2 id="h-in">Game</h2>
-      <p class="gsum" id="gsum" hidden></p>
-      <details class="setup" id="setup">
-        <summary>Edit game and engine depth</summary>
+      <h2 id="h-in" class="vh">Game</h2>
+      <div class="gbar">
+        <p class="gsum" id="gsum" hidden></p>
+        <button class="gedit" id="edit" type="button" aria-expanded="false" aria-controls="setup">Edit game</button>
+      </div>
+      <div class="setup" id="setup" hidden>
         <textarea id="src" spellcheck="false" aria-label="Game in PGN format"></textarea>
         <div class="controls">
           <div class="field"><label class="label" for="depth">Engine depth</label>
@@ -267,7 +270,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
           <button class="btn primary" id="run">Analyze</button>
           <button class="btn" id="sample" type="button">Load sample game</button>
         </div>
-      </details>
+      </div>
       <p class="err" id="err" hidden></p>
       <div class="progress" id="prog" hidden>
         <div class="bar"><div id="barFill"></div></div>
@@ -306,7 +309,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
           <button class="btn" id="lFwd" aria-label="Next move" title="Next move (→)">›</button>
           <button class="btn" id="lEnd" aria-label="End of line" title="End of line (End)">»</button>
           <span class="ptext" id="lPos"></span>
-          <label class="check stepauto"><input type="checkbox" id="autoplay"> Autoplay</label>
+          <label class="check stepauto"><input type="checkbox" id="autoplay" autocomplete="off"> Autoplay</label>
         </div>
       </div>
     </section>
@@ -515,9 +518,9 @@ function playerName(c) { const h = S.game && S.game.headers || {}; const n = c =
 async function analyze() {
   $('#err').hidden = true;
   let game;
-  try { game = parseInput($('#src').value) } catch (e) { $('#err').textContent = e.message; $('#err').hidden = false; $('#setup').open = true; return }
+  try { game = parseInput($('#src').value) } catch (e) { $('#err').textContent = e.message; $('#err').hidden = false; setEdit(true); return }
   store.set('drills.src', $('#src').value);
-  $('#setup').open = false; // the game summary replaces the PGN while you train
+  setEdit(false); // the game summary replaces the PGN while you train
   const run = ++S.run;
   const depth = +$('#depth').value;
   S.game = game; S.evals = new Array(game.positions.length); S.puzzles = []; S.analyzedDepth = depth; S.current = -1; S.done = false;
@@ -567,6 +570,7 @@ function renderGameSummary() {
   rest.textContent = (r && r !== '*' ? ` · ${r}` : '') + ` · ${n} move${n === 1 ? '' : 's'}`;
   el.textContent = `${playerName('w')} vs ${playerName('b')}`; el.appendChild(rest);
 }
+function setEdit(open) { $('#setup').hidden = !open; $('#edit').setAttribute('aria-expanded', open) }
 function setProgress(f, text) { $('#barFill').style.width = (f * 100).toFixed(1) + '%'; $('#ptext').textContent = text }
 
 // g: parsed game; E: engine result per position (may have gaps while analysis runs).
@@ -1028,8 +1032,7 @@ $('#lStart').onclick = () => step(0);
 $('#lBack').onclick = () => step(T.line.i - 1);
 $('#lFwd').onclick = () => step(T.line.i + 1);
 $('#lEnd').onclick = () => step(T.line.moves.length);
-$('#autoplay').onchange = () => { store.set('drills.autoplay', autoplayOn() ? '1' : '0'); if (!T.line) return; if (autoplayOn()) autoplay(); else T.token++ };
-$('#autoplay').checked = store.get('drills.autoplay') === '1';
+$('#autoplay').onchange = () => { if (!T.line) return; if (autoplayOn()) autoplay(); else T.token++ };
 document.addEventListener('keydown', e => {
   if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest('textarea, select, input:not([type=checkbox])')) return;
   const key = { h: '#bHint', s: '#bSol', r: '#bRetry', p: '#bPrev', n: '#bNext' }[e.key.toLowerCase()]; // see aria-keyshortcuts
@@ -1281,6 +1284,7 @@ $('#copyAll').onclick = async () => {
 
 /* ---------------- wiring ---------------- */
 $('#run').onclick = analyze;
+$('#edit').onclick = () => setEdit($('#setup').hidden);
 $('#sample').onclick = () => { $('#src').value = SAMPLE; analyze() };
 for (const id of ['depth', 'maxMate']) { // settings stay for the next visit
   const el = $('#' + id), v = store.get('drills.' + id);
