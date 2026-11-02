@@ -165,6 +165,7 @@ test('the chart shows the eval of the better line as a branch from the game, unt
 });
 
 test('autoplay stays on for the next puzzle, and is off again after a reload', async ({ page }) => {
+  test.slow(); // two full analyses and an autoplay: on a busy machine (8 parallel workers) it can take more than 2 minutes
   await page.addInitScript(() => localStorage.setItem('drills.autoplay', '1')); // a value from an older version: not used
   await openAnalyzed(page);
   await play(page, (await current(page)).best);
