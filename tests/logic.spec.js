@@ -71,7 +71,7 @@ test.describe('PGN input', () => {
 
   test('parseInput reads the sample game', async ({ page }) => {
     const r = await run(page, D => {
-      const g = D.parseInput(document.querySelector('#src').value);
+      const g = D.parseInput(D.SAMPLE);
       return { moves: g.moves.length, positions: g.positions.length, white: g.headers.White, first: g.moves[0], second: g.moves[1] };
     });
     expect(r.moves).toBe(87);
@@ -213,7 +213,17 @@ test.describe('findTactics', () => {
       const p = { fen: 'r3k3/8/8/3N4/4n3/8/8/3QK3 w - - 0 1', played: { uci: 'd1d2' }, refute: ['e4d2', 'e1d2'] };
       return D.tacticNotes(p, ['d5c7', 'e8e7', 'c7a8']);
     });
-    expect(r).toBe('The idea: 1. Nc7+ forks the king and the rook on a8, and wins the rook. '
-      + 'The game move, 1. Qd2, allowed 1... Nxd2, which takes the queen on d2 with a knight.');
+    expect(r).toBe('The game move, 1. Qd2, lost your queen. It put your queen on d2, where 1... Nxd2 takes it with a knight. '
+      + 'The idea: 1. Nc7+ forks the king and the rook on a8, and wins the rook.');
+  });
+
+  test('tacticNotes says when the lost piece was already under attack before the game move', async ({ page }) => {
+    // The bishop on c8 attacks the queen on g4. White played Kb1, and Black takes the queen.
+    const r = await run(page, D => {
+      const p = { fen: 'k1b5/8/8/8/6Q1/8/4n3/K7 w - - 0 1', played: { uci: 'a1b1' }, refute: ['c8g4'] };
+      return D.tacticNotes(p, ['g4h5', 'a8b8', 'h5e2']);
+    });
+    expect(r).toBe('The game move, 1. Kb1, lost your queen. Your queen on g4 was already under attack from the bishop on c8, '
+      + 'and 1... Bxg4 takes it for free. Better: 1. Qh5 moves the queen away. Then 2. Qxe2 takes the knight on e2 for free.');
   });
 });

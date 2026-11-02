@@ -3,10 +3,22 @@ import { test, expect } from '@playwright/test';
 
 const SAMPLE_PUZZLES = ['20… Rb8', '29. Rd2', '32… Kf8', '33. d5', '36… Rd7', '41… Rh5'];
 
+// The puzzle checks below are for the sample game at depth 14. The page default is Fast · 10, so the tests choose 14
+// unless a test chose a depth itself.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => { if (!localStorage.getItem('drills.depth')) localStorage.setItem('drills.depth', '14') });
+});
+
 async function openAnalyzed(page, url = '/') {
   await page.goto(url);
   await expect(page.locator('#engineText')).toHaveText('Stockfish 18 ready', { timeout: 60_000 });
   await expect(page.locator('#ptext')).toHaveText('Analysis complete', { timeout: 90_000 });
+}
+// Put text in the clipboard, then click Paste game.
+async function pasteGame(page, text) {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.evaluate(t => navigator.clipboard.writeText(t), text);
+  await page.locator('#paste').click();
 }
 async function play(page, uci) {
   await page.locator(`.sq[data-sq="${uci.slice(0, 2)}"]`).click();
@@ -110,6 +122,27 @@ test('compares the better line with the game line', async ({ page }) => {
 
   await best.click(); // each line keeps its place
   await expectBoardAt(page, p, p.pv, 2);
+});
+
+test('the chart shows the eval of the better line as a branch from the game, until the puzzle closes', async ({ page }) => {
+  await openAnalyzed(page);
+  const p = await current(page); // 20... Rb8, +0.1 -> +2.9
+  await expect(page.locator('#chart .best')).toHaveCount(0);
+  await expect(page.locator('#lgBest')).toBeHidden();
+  await play(page, p.best);
+  const n = Math.min(6, p.pv.length);
+  // The engine checks each position of the line, then the branch has one point for the start and one for each move.
+  await page.waitForFunction(n => (window.BlunderDrills.trainer.lines.best.evals || []).length === n + 1, n, { timeout: 30_000 });
+  await expect(page.locator('#lgBest')).toBeVisible();
+  const d = await page.locator('#chart .best path').first().getAttribute('d');
+  expect(d.split(' L')).toHaveLength(n + 1);
+  await expect(page.locator('#chart .best title')).toHaveText(/^Better line from 20\.\.\. \S+: ends at \S+$/);
+  const end = await page.evaluate(() => { const L = window.BlunderDrills.trainer.lines.best; return L.evals[L.evals.length - 1] });
+  expect(Math.abs(end.cp ?? 0)).toBeLessThan(150); // the better line stays near equal, far from the game's +2.9
+  await expect(page.locator('#chart .best circle')).toHaveCount(1); // the move on the board
+  await page.locator('#bRetry').click();
+  await expect(page.locator('#chart .best')).toHaveCount(0);
+  await expect(page.locator('#lgBest')).toBeHidden();
 });
 
 test('autoplay stays on for the next puzzle, and is off again after a reload', async ({ page }) => {
@@ -242,7 +275,36 @@ test('the second hint names what the game move allowed when the better move is n
   await page.locator('#bHint').click();
   await expect(page.locator('#fb')).toHaveText('Hint: move the highlighted piece. The game move allowed a knight fork. Find a move that stops it.');
   await page.locator('#bSol').click();
-  await expect(page.locator('#fb .note')).toHaveText('The game move, 20... Rb8, allowed 21. Nc6, which forks the queen on d8 and the rook on b8, and wins the rook.');
+  await expect(page.locator('#fb .note')).toHaveText('The game move, 20... Rb8, lost your rook. It allowed 21. Nc6, which forks your queen on d8 and your rook on b8, and wins the rook.');
+});
+
+test('a queen left under attack: the note, the line of attack and a badge of the lost queen', async ({ page }) => {
+  // 2... d5 opens the c8 bishop's line to the queen on g4. 3. Nc3 leaves the queen there.
+  await openAnalyzed(page);
+  await pasteGame(page, '1. e4 e5 2. Qg4 d5 3. Nc3 Bxg4 *');
+  await expect(page.locator('#ptext')).toHaveText('Analysis complete', { timeout: 90_000 });
+  await page.locator('.pitem .mv', { hasText: '3. Nc3' }).click();
+  await page.locator('#bSol').click();
+  await expect(page.locator('#fb .note')).toContainText('The game move, 3. Nc3, lost your queen. Your queen on g4 was already under attack from the bishop on c8, and 3... Bxg4 takes it for free.');
+  const threat = async () => {
+    await expect(page.locator('#board .arrow')).toHaveCount(1);
+    await expect(page.locator('#board .arrow.attack')).toHaveAttribute('data-from', 'c8');
+    await expect(page.locator('#board .arrow.attack')).toHaveAttribute('data-to', 'g4');
+    await expect(page.locator('.sq.tgt[data-sq="g4"]')).toHaveCount(1);
+  };
+  await page.locator('#fb .note .mvlink', { hasText: '3. Nc3' }).click(); // the game line, after the game move
+  await expect(page.locator('#lPos')).toHaveText('Move 1 of 6: 3. Nc3');
+  await threat();
+  await page.keyboard.press('Home'); // the puzzle position: the attack was there already
+  await threat();
+  await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#lPos')).toHaveText('Move 2 of 6: 3... Bxg4');
+  const badge = page.locator('.sq[data-sq="g4"] .took');
+  await expect(badge).toHaveCount(1);
+  await expect(badge).toHaveClass(/\bloss\b/); // White lost it, and the puzzle is White's
+  await expect(page.locator('.sq[data-sq="g4"]')).toHaveAttribute('aria-label', 'g4 Black bishop, took the White queen');
+  await page.keyboard.press('ArrowRight'); // only the last move's capture has a badge
+  await expect(badge).toHaveCount(0);
 });
 
 test('a move in the solution note opens its line and draws the tactic on the board', async ({ page }) => {
@@ -325,35 +387,27 @@ test('exports one valid Lichess study chapter per puzzle', async ({ page }) => {
 test('analyzes a pasted game that ends in checkmate and remembers it after reload', async ({ page }) => {
   await openAnalyzed(page);
   await expect(page.locator('#gsum')).toHaveText('Martin Reyes vs Priya Nair · 1-0 · 44 moves');
-  await expect(page.locator('#src')).toBeHidden(); // the PGN folds away while you train
-  await expect(page.locator('#edit')).toHaveAttribute('aria-expanded', 'false');
-  await page.locator('#edit').click();
-  await expect(page.locator('#edit')).toHaveAttribute('aria-expanded', 'true');
-  await page.locator('#src').fill('1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0');
-  await page.locator('#run').click();
-  await expect(page.locator('#src')).toBeHidden();
+  await pasteGame(page, '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0');
   await expect(page.locator('#gsum')).toHaveText('White vs Black · 1-0 · 4 moves');
   await expect(page.locator('#pmeta')).toHaveText(/^ · 8 positions/, { timeout: 60_000 });
   await expect(page.locator('#ptext')).toHaveText('Analysis complete');
   await expect(page.locator('.pitem .mv')).toContainText(['3… Nf6']);
   await expect(page.locator('#evalNow')).toHaveText('Checkmate · 1-0');
   await page.reload();
-  await expect(page.locator('#src')).toHaveValue(/Qxf7#/);
+  await expect(page.locator('#gsum')).toHaveText('White vs Black · 1-0 · 4 moves');
 });
 
 test('a game with no puzzles says so after the analysis, and how to find more', async ({ page }) => {
   await openAnalyzed(page);
-  await page.locator('#edit').click();
-  await page.locator('#src').fill('1. e4 e5 2. Nf3 Nc6 *');
-  await page.locator('#run').click();
+  await pasteGame(page, '1. e4 e5 2. Nf3 Nc6 *');
   await expect(page.locator('#prompt')).toHaveText('Finding puzzles…');
   await expect(page.locator('#ptext')).toHaveText('Analysis complete', { timeout: 60_000 });
   await expect(page.locator('#prompt')).toHaveText('No puzzles in this game');
-  await expect(page.locator('#fb')).toHaveText('The engine found no blunders or missed mates with these settings. To find more, turn on Include mistakes, allow longer missed mates or analyze again at a greater depth.');
+  await expect(page.locator('#fb')).toHaveText('The engine found no blunders or missed mates with these settings. To find more, turn on Include mistakes, allow longer missed mates or choose a greater engine depth.');
   await expect(page.locator('#summary')).toHaveText('No puzzles in this game with these settings.');
   await expect(page.locator('#plist .empty')).toHaveCount(0);
   await page.locator('#mistakes').check(); // a tip that is already on is not given
-  await expect(page.locator('#fb')).toHaveText('The engine found no blunders, mistakes or missed mates with these settings. To find more, allow longer missed mates or analyze again at a greater depth.');
+  await expect(page.locator('#fb')).toHaveText('The engine found no blunders, mistakes or missed mates with these settings. To find more, allow longer missed mates or choose a greater engine depth.');
 });
 
 test('remembers the settings, the player and the progress after a reload', async ({ page }) => {
@@ -363,7 +417,7 @@ test('remembers the settings, the player and the progress after a reload', async
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('✓ Solved');
   await page.getByRole('button', { name: 'Priya Nair (Black)' }).click();
   await page.locator('#maxMate').selectOption('3');
-  await page.locator('#depth').selectOption('10', { force: true });
+  await page.locator('#depth').selectOption('10'); // analyzes the game again
   await page.reload();
   await expect(page.locator('#maxMate')).toHaveValue('3');
   await expect(page.locator('#depth')).toHaveValue('10');
@@ -394,13 +448,25 @@ test('fits the board and the puzzle actions in a short desktop window', async ({
   await expect(page.locator('#bNext')).toHaveClass(/primary/);
 });
 
-test('shows an error for a bare FEN', async ({ page }) => {
-  await page.goto('/');
-  await page.locator('#edit').click();
-  await page.locator('#src').fill('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
-  await page.locator('#run').click();
-  await expect(page.locator('#err')).toBeVisible();
+test('a clipboard that does not hold a game shows an error and keeps the current game', async ({ page }) => {
+  await openAnalyzed(page);
+  await pasteGame(page, 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
   await expect(page.locator('#err')).toContainText('single position (FEN)');
+  await pasteGame(page, '   ');
+  await expect(page.locator('#err')).toHaveText('The clipboard is empty. Copy a game in PGN format, then click Paste game.');
+  await page.evaluate(() => { navigator.clipboard.readText = () => Promise.reject(new Error('denied')) });
+  await page.locator('#paste').click();
+  await expect(page.locator('#err')).toContainText('did not let the page read the clipboard');
+  await expect(page.locator('#gsum')).toHaveText('Martin Reyes vs Priya Nair · 1-0 · 44 moves');
+  await expect(page.locator('.pitem .mv')).toHaveText(SAMPLE_PUZZLES);
+  await expect(page.locator('#ptext')).toHaveText('Analysis complete');
+  await page.reload(); // the game in storage is still the sample
+  await expect(page.locator('#gsum')).toHaveText('Martin Reyes vs Priya Nair · 1-0 · 44 moves');
+});
+
+test('Fast · 10 is the default engine depth', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#depth option[selected]')).toHaveAttribute('value', '10');
 });
 
 test('keeps keyboard focus on the board, so a move can be made with the keyboard', async ({ page }) => {

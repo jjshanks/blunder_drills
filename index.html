@@ -101,8 +101,6 @@ header.top { grid-area: head }
 .trainer { grid-area: trainer; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px) } /* script: a negative top when the panel is taller than the window */
 @media (max-width: 920px) { .trainer { position: static } }
 
-textarea#src { width: 100%; min-height: 150px; resize: vertical; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.55; padding: 12px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface) }
-.controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: end }
 .field { display: grid; gap: 4px }
 select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); background: var(--surface) }
 .check { display: flex; align-items: center; gap: 8px; font-size: 14px; padding-bottom: 7px; cursor: pointer }
@@ -118,17 +116,13 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
 .err { color: var(--bad); font-size: 14px; margin: 0 }
 
-/* Game panel: a thin bar once a game is loaded (the summary, "Edit game" and one status line); the PGN and the engine depth fold away under "Edit game". */
+/* Game panel: a thin bar (the summary, "Paste game" and one status line). A new game comes from the clipboard. */
 .in { gap: 4px; padding-top: 14px }
 .gbar { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: space-between }
 .gsum { margin: 0; font-weight: 500; overflow-wrap: anywhere }
 .gsum span { color: var(--muted); font-weight: 400 }
-.gedit { border: 0; background: none; padding: 2px 0; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--accent); white-space: nowrap }
-.gedit::before { content: "▸"; display: inline-block; width: 1em; transition: transform .15s }
-.gedit[aria-expanded="true"]::before { transform: rotate(90deg) }
-@media (prefers-reduced-motion: reduce) { .gedit::before { transition: none } }
-.setup { display: grid; gap: 14px; padding: 10px 0 6px }
-.setup[hidden] { display: none }
+.gpaste { border: 0; background: none; padding: 2px 0; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--accent); white-space: nowrap }
+.gpaste:hover { text-decoration: underline }
 .filters { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center }
 .filters .field { display: flex; align-items: center; gap: 8px; font-size: 14px }
 .filters .check { padding-bottom: 0 }
@@ -144,6 +138,8 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .chart { cursor: pointer } /* a click opens the whole game at that move */
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted) }
 .legend b { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0 }
+.legend b.dash { width: 14px; height: 0; border-radius: 0; border-top: 2px dashed var(--good); vertical-align: 3px }
+.chart text.bl { fill: var(--good); font-weight: 600 }
 
 .summary { color: var(--muted); font-size: 14px; margin: 0 }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; flex-wrap: wrap }
@@ -209,6 +205,13 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .sq.hint::before { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 0.4cqi var(--frame), inset 0 0 0 1.2cqi var(--hint); z-index: 2; pointer-events: none } /* a thick gold ring with a navy edge: clear on both square colors */
 .sq.dot::after { content: ""; position: absolute; left: 35%; top: 35%; width: 30%; height: 30%; border-radius: 50%; background: var(--dot); z-index: 2 }
 .sq.cap::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, transparent 0 66%, var(--dot) 67%); z-index: 2 }
+/* The piece that the last move took: a small badge at the top right of the capture square, red when the player lost it. */
+.took { position: absolute; top: 1%; right: 1%; width: 50%; height: 50%; border-radius: 50%; background: rgba(253, 252, 250, .9); box-shadow: 0 0 0 .3cqi rgba(0, 41, 107, .55), 0 .3cqi .6cqi rgba(0, 0, 0, .3); z-index: 3; pointer-events: none }
+.took.loss { background: var(--arrow); box-shadow: 0 0 0 .3cqi #fff, 0 .3cqi .6cqi rgba(0, 0, 0, .3) }
+.took .pc { left: 6%; top: 6%; width: 88%; height: 88%; opacity: .85; filter: none }
+.took.in { animation: took-in .2s .18s both } /* after the slide of the capturing piece */
+@keyframes took-in { from { opacity: 0; transform: scale(.5) } }
+@media (prefers-reduced-motion: reduce) { .took.in { animation: none } }
 .sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 3 }
 .pc { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; filter: drop-shadow(0 .35cqi .25cqi rgba(0,0,0,.3)) }
 .sq.mine:hover .pc { transform: translateY(-2%) scale(1.04); transition: transform .12s }
@@ -258,18 +261,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       <h2 id="h-in" class="vh">Game</h2>
       <div class="gbar">
         <p class="gsum" id="gsum" hidden></p>
-        <button class="gedit" id="edit" type="button" aria-expanded="false" aria-controls="setup">Edit game</button>
-      </div>
-      <div class="setup" id="setup" hidden>
-        <textarea id="src" spellcheck="false" aria-label="Game in PGN format"></textarea>
-        <div class="controls">
-          <div class="field"><label class="label" for="depth">Engine depth</label>
-            <select id="depth"><option value="10">Fast · 10</option><option value="14" selected>Normal · 14</option><option value="18">Deep · 18</option></select></div>
-        </div>
-        <div class="row">
-          <button class="btn primary" id="run">Analyze</button>
-          <button class="btn" id="sample" type="button">Load sample game</button>
-        </div>
+        <button class="gpaste" id="paste" type="button" title="Analyze the game (PGN) that you copied">Paste game</button>
       </div>
       <p class="err" id="err" hidden></p>
       <div class="progress" id="prog" hidden>
@@ -317,7 +309,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
     <section class="panel chartp" aria-labelledby="h-chart">
       <div class="thead"><h2 id="h-chart">Evaluation</h2><span class="ptext" id="evalNow"></span></div>
       <svg class="chart" id="chart" viewBox="0 0 600 120" role="img" aria-label="Evaluation over the game"></svg>
-      <div class="legend"><span><b style="background:var(--mate)"></b>Missed mate</span><span><b style="background:var(--blunder)"></b>Blunder</span><span><b style="background:var(--mistake)"></b>Mistake</span></div>
+      <div class="legend"><span><b style="background:var(--mate)"></b>Missed mate</span><span><b style="background:var(--blunder)"></b>Blunder</span><span><b style="background:var(--mistake)"></b>Mistake</span><span id="lgBest" hidden><b class="dash"></b>Better line</span></div>
     </section>
 
     <section class="panel listp" aria-labelledby="h-list">
@@ -333,6 +325,8 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
         <div class="field"><label for="maxMate">Missed mates up to</label>
           <select id="maxMate"><option value="1">Mate in 1</option><option value="2" selected>Mate in 2</option><option value="3">Mate in 3</option><option value="4">Mate in 4</option><option value="5">Mate in 5</option></select></div>
         <label class="check"><input type="checkbox" id="mistakes"> Include mistakes</label>
+        <div class="field"><label for="depth">Engine depth</label>
+          <select id="depth"><option value="10" selected>Fast · 10</option><option value="14">Normal · 14</option><option value="18">Deep · 18</option></select></div>
       </div>
       <ul class="plist" id="plist"></ul>
     </section>
@@ -507,7 +501,7 @@ function parseInput(raw) {
 }
 
 /* ---------------- state ---------------- */
-const S = { game: null, evals: [], puzzles: [], who: 'all', run: 0, analyzedDepth: 0, current: -1, done: false, key: null, progress: {} };
+const S = { src: null, game: null, evals: [], puzzles: [], who: 'all', run: 0, analyzedDepth: 0, current: -1, done: false, key: null, progress: {} };
 const T = { p: null, chess: null, orient: 'w', sel: null, last: null, mode: 'idle', left: 0, token: 0, hint: null, legal: [], pending: null, line: null, lines: null };
 
 const moveLabel = (m) => m.color === 'w' ? `${m.moveNo}. ${m.san}` : `${m.moveNo}… ${m.san}`;
@@ -515,12 +509,12 @@ const sideName = c => c === 'w' ? 'White' : 'Black';
 function playerName(c) { const h = S.game && S.game.headers || {}; const n = c === 'w' ? h.White : h.Black; return n && n !== '?' ? n : sideName(c) }
 
 /* ---------------- analysis ---------------- */
-async function analyze() {
+// src: the PGN text. If it is not a valid game, show an error and keep the current game.
+async function analyze(src) {
   $('#err').hidden = true;
   let game;
-  try { game = parseInput($('#src').value) } catch (e) { $('#err').textContent = e.message; $('#err').hidden = false; setEdit(true); return }
-  store.set('drills.src', $('#src').value);
-  setEdit(false); // the game summary replaces the PGN while you train
+  try { game = parseInput(src) } catch (e) { showErr(e.message); return }
+  store.set('drills.src', src); S.src = src;
   const run = ++S.run;
   const depth = +$('#depth').value;
   S.game = game; S.evals = new Array(game.positions.length); S.puzzles = []; S.analyzedDepth = depth; S.current = -1; S.done = false;
@@ -534,13 +528,8 @@ async function analyze() {
   const n = game.positions.length, t0 = performance.now();
   for (let k = 0; k < n; k++) {
     if (run !== S.run) return;
-    const fen = game.positions[k];
-    const c = new Chess(fen);
     setProgress(k / n, `Analyzing position ${k + 1} of ${n} · depth ${depth}`);
-    let ev;
-    if (c.isCheckmate()) ev = { score: { mate: 0, lost: true }, pv: [], best: null };
-    else if (c.isStalemate() || c.isInsufficientMaterial()) ev = { score: { cp: 0 }, pv: [], best: null };
-    else ev = await Engine.analyse(fen, depth);
+    const ev = await evalPosition(game.positions[k], depth);
     if (run !== S.run) return;
     if (!ev) return setProgress(k / n, `Stopped at position ${k + 1} of ${n}: the engine stopped working.`);
     S.evals[k] = ev;
@@ -552,6 +541,13 @@ async function analyze() {
   const last = S.evals[n - 1];
   if (last) { const e = forWhite(last.score, game.positions[n - 1].split(' ')[1]); $('#evalNow').textContent = (isMate(e) && e.mate === 0 ? 'Checkmate · ' : 'End ') + fmt(e) }
   S.done = true; renderList(); syncBoard();
+}
+// The engine result for a position, as Engine.analyse gives it. A game that is over needs no search.
+function evalPosition(fen, depth, urgent) {
+  const c = new Chess(fen);
+  if (c.isCheckmate()) return Promise.resolve({ score: { mate: 0, lost: true }, pv: [], best: null });
+  if (c.isStalemate() || c.isInsufficientMaterial()) return Promise.resolve({ score: { cp: 0 }, pv: [], best: null });
+  return Engine.analyse(fen, depth, urgent);
 }
 const showGameEnd = () => { const g = S.game; showPosition(g.positions[g.positions.length - 1], g.moves[g.moves.length - 1]) };
 // Puzzle progress for each game, in localStorage as { 'ply type': status }. The key is a hash of the moves,
@@ -570,7 +566,14 @@ function renderGameSummary() {
   rest.textContent = (r && r !== '*' ? ` · ${r}` : '') + ` · ${n} move${n === 1 ? '' : 's'}`;
   el.textContent = `${playerName('w')} vs ${playerName('b')}`; el.appendChild(rest);
 }
-function setEdit(open) { $('#setup').hidden = !open; $('#edit').setAttribute('aria-expanded', open) }
+function showErr(text) { $('#err').textContent = text; $('#err').hidden = false }
+// Analyze the game in the clipboard.
+async function pasteGame() {
+  let text;
+  try { text = await navigator.clipboard.readText() } catch { return showErr('The browser did not let the page read the clipboard. Allow clipboard access for this page, then try again.') }
+  if (!text.trim()) return showErr('The clipboard is empty. Copy a game in PGN format, then click Paste game.');
+  analyze(text);
+}
 function setProgress(f, text) { $('#barFill').style.width = (f * 100).toFixed(1) + '%'; $('#ptext').textContent = text }
 
 // g: parsed game; E: engine result per position (may have gaps while analysis runs).
@@ -616,7 +619,7 @@ function emptyText() {
   if (S.game && S.done) {
     const other = S.puzzles.length > 0, who = other ? ` by ${playerName(S.who)}` : ''; // puzzles for the other player only
     const mistakes = $('#mistakes').checked;
-    const tips = [other && 'choose Both players', !mistakes && 'turn on Include mistakes', +$('#maxMate').value < 5 && 'allow longer missed mates', S.analyzedDepth < 18 && 'analyze again at a greater depth'].filter(Boolean);
+    const tips = [other && 'choose Both players', !mistakes && 'turn on Include mistakes', +$('#maxMate').value < 5 && 'allow longer missed mates', S.analyzedDepth < 18 && 'choose a greater engine depth'].filter(Boolean);
     prompt = other ? `No puzzles for ${playerName(S.who)}` : 'No puzzles in this game';
     msg = `The engine found no blunders${mistakes ? ', mistakes' : ''} or missed mates${who} with these settings.` + (tips.length ? ` To find more, ${orList(tips)}.` : '');
   }
@@ -704,6 +707,24 @@ function drawChart() {
     const cx = x(T.line.i);
     h += `<line x1="${cx}" x2="${cx}" y1="${padT}" y2="${H - padB}" stroke="var(--surface)" stroke-width="4"/><line x1="${cx}" x2="${cx}" y1="${padT}" y2="${H - padB}" stroke="var(--accent)" stroke-width="2"/>`;
   }
+  // The better line of a solved puzzle: a dashed branch from the position before the game move, with the eval where it ends.
+  const B = g && T.p && T.lines && T.lines.best, bp = [];
+  if (B && B.evals && visible().includes(T.p)) {
+    const p = T.p;
+    bp.push([x(p.ply), y(wc(forWhite(S.evals[p.ply].score, p.fen.split(' ')[1])))]);
+    for (let i = 1; i < B.evals.length && p.ply + i < n; i++) bp.push([x(p.ply + i), y(wc(B.evals[i]))]);
+  }
+  $('#lgBest').hidden = bp.length < 2;
+  if (bp.length > 1) {
+    const d = 'M' + bp.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' L'), [ex, ey] = bp[bp.length - 1], end = B.evals[bp.length - 1];
+    const right = ex > W - padR - 40, ty = ey < padT + 14 ? ey + 14 : ey - 6;
+    h += `<g class="best"><title>Better line from ${B.parts[0].label}: ends at ${fmt(end)}</title>`
+      + `<path d="${d}" fill="none" stroke="var(--surface)" stroke-width="4" stroke-linejoin="round"/>`
+      + `<path d="${d}" fill="none" stroke="var(--good)" stroke-width="2" stroke-dasharray="4 3" stroke-linejoin="round"/>`
+      + `<text class="bl" x="${(right ? ex - 4 : ex + 4).toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${right ? 'end' : 'start'}">${fmt(end)}</text>`;
+    if (T.line === B && B.i < bp.length) { const [cx, cy] = bp[B.i]; h += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4" fill="var(--good)" stroke="var(--surface)" stroke-width="2"/>` } // the move on the board
+    h += '</g>';
+  }
   const col = { mate: 'var(--mate)', blunder: 'var(--blunder)', mistake: 'var(--mistake)' };
   if (g) S.puzzles.forEach((p, i) => {
     if (!visible().includes(p)) return;
@@ -765,6 +786,9 @@ function renderBoard() {
   const targets = T.sel ? T.legal.filter(m => m.from === T.sel) : [];
   const tac = T.line && T.line.marks && T.line.marks[T.line.i]; // a tactic that starts with the move just played
   const rings = new Set(tac ? tac.targets.map(q => q.square) : []);
+  const h = T.chess.history({ verbose: true }), lm = h[h.length - 1]; // a capture by the last move gets a badge of the piece it took
+  const took = lm && lm.captured ? { sq: lm.to, color: lm.color === 'w' ? 'b' : 'w', type: lm.captured } : null;
+  if (took) rings.delete(took.sq); // the badge marks that target
   let checkSq = null;
   if (T.chess.inCheck()) { const t = T.chess.turn(); for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { const q = B[r][c]; if (q && q.type === 'k' && q.color === t) checkSq = FILES[c] + (8 - r) } }
   for (let row = 0; row < 8; row++) for (let col = 0; col < 8; col++) {
@@ -783,6 +807,11 @@ function renderBoard() {
     if (tg) b.classList.add(pc ? 'cap' : 'dot');
     let label = sq;
     if (pc) { b.appendChild(pieceEl(pc.color, pc.type)); label += ' ' + sideName(pc.color) + ' ' + PNAME[pc.type]; if (T.mode === 'play' && T.p && pc.color === T.p.color && pc.color === T.chess.turn()) b.classList.add('mine') }
+    if (took && took.sq === sq) {
+      const g = document.createElement('span'); g.className = 'took' + (T.p && took.color === T.p.color ? ' loss' : '') + (T.anim ? ' in' : '');
+      g.appendChild(pieceEl(took.color, took.type)); b.appendChild(g);
+      label += `, took the ${sideName(took.color)} ${PNAME[took.type]}`;
+    }
     if (rings.has(sq)) label += ', target';
     b.setAttribute('aria-label', label);
     el.appendChild(b);
@@ -792,7 +821,8 @@ function renderBoard() {
   $('#ranks').innerHTML = (T.orient === 'w' ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8]).map(r => `<span>${r}</span>`).join('');
   if (focusSq) el.querySelector(`.sq[data-sq="${focusSq}"]`).focus({ preventScroll: true });
   if (T.p && T.mode === 'play' && T.chess.fen() === T.p.fen) el.appendChild(arrowEl(T.p.played.from, T.p.played.to));
-  if (tac) { el.appendChild(arrowEl(tac.from, tac.to)); for (const [a, b] of tacticArrows(tac, T.chess)) el.appendChild(arrowEl(a, b, true)) }
+  if (tac && tac.threat) el.appendChild(arrowEl(tac.from, tac.to, true)); // an attack that is there before the capture
+  else if (tac) { el.appendChild(arrowEl(tac.from, tac.to)); for (const [a, b] of tacticArrows(tac, T.chess)) el.appendChild(arrowEl(a, b, true)) }
   if (T.anim) { slide(T.anim); T.anim = null }
 }
 // Arrow for a move, drawn over the board in square units (viewBox 0 0 8 8). attack: a thin dashed arrow
@@ -953,6 +983,7 @@ function evalWords(s) { // s from White's point of view
   return `${fmt(s)}, ` + (Math.abs(s.cp) < 30 ? 'about equal' : `${s.cp > 0 ? 'White' : 'Black'} is better`);
 }
 // marks: { [i]: tactic } draws a tactic on the board when the line is at move i, just after its first move.
+// A mark { threat: true, from, to, targets } draws only a line of attack, for a capture that is still to come.
 function makeLine(title, moves, score, i, marks) {
   const p = T.p, parts = pvParts(p.fen, moves);
   return { title, fen: p.fen, prev: p.prev, moves: moves.slice(0, parts.length), parts, score: forWhite(score, p.color), i: Math.min(i, parts.length), marks };
@@ -965,12 +996,29 @@ function wholeLine(i) {
 // noteLine: the line that the feedback note describes, if it is longer than best.
 function openLines(best, score, at, noteLine = best) {
   const p = T.p, t = findTactics(p.fen, noteLine), a = allowedTactic(p);
+  // The attack on the piece that the game move lost: from the start when it was already there, and after the game move.
+  const th = a && (a.already || a.moved) && { threat: true, from: a.from, to: a.to, targets: a.targets };
+  const start = a && a.already ? { 0: th } : {};
   T.lines = {
-    best: makeLine('Better', best, score, at, t && { [t.ply + 1]: t }),
-    game: makeLine('Game', [p.played.uci, ...(p.refute || [])].slice(0, 6), p.after, 0, a && { [a.ply + 2]: a }), // +2: after the game move
+    best: makeLine('Better', best, score, at, { ...start, ...(t && { [t.ply + 1]: t }) }),
+    game: makeLine('Game', [p.played.uci, ...(p.refute || [])].slice(0, 6), p.after, 0, { ...start, ...(th && { 1: th }), ...(a && { [a.ply + 2]: a }) }), // +2: after the game move
     whole: wholeLine(p.ply)
   };
   showLine('best');
+  evalLine(T.lines.best);
+}
+// The eval after each move of a line, for the chart: L.evals[i] is the score for White after i moves, at the depth of
+// the game analysis. One search at a time, so a line that closes (Retry, another puzzle) leaves no work in the queue.
+async function evalLine(L) {
+  L.evals = [];
+  const c = new Chess(L.fen);
+  for (let i = 1; i <= L.moves.length; i++) {
+    playUci(c, L.moves[i - 1]);
+    const r = await evalPosition(c.fen(), S.analyzedDepth, true);
+    if (!r || !T.lines || T.lines.best !== L) return;
+    L.evals[i] = forWhite(r.score, c.turn());
+    drawChart();
+  }
 }
 // Open the whole game at move i. If a puzzle is still unsolved, its other lines stay hidden, so they do not give away the answer.
 function openWhole(i) {
@@ -998,7 +1046,7 @@ function lineGo(i) {
   T.anim = i === L.i + 1 ? last : null; // slide the piece only on a single step forward
   L.i = i; T.chess = c; T.last = last; T.sel = null; T.hint = null;
   renderBoard(); renderStepper();
-  if (L.whole) drawChart();
+  if (L.whole || L.evals) drawChart();
 }
 function step(i) { T.token++; lineGo(i) } // a manual step stops autoplay
 async function autoplay() {
@@ -1152,23 +1200,25 @@ function found(m, moves, pay) {
   return { ...m, ...pay, color: mv.color, san: mv.san, piece: mv.promotion || mv.piece, from: mv.from, to: mv.to };
 }
 // Words for a tactic t from findTactics, e.g. 'forks the king and the rook on a8, and wins the rook'.
-const pieceAt = q => q.type === 'k' ? 'the king' : `the ${PNAME[q.type]} on ${q.square}`;
+// own: the piece is the player's, so 'your king', 'your queen on g4'.
+const pieceAt = (q, own) => (own ? 'your ' : 'the ') + (q.type === 'k' ? 'king' : `${PNAME[q.type]} on ${q.square}`);
 const andList = xs => xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
 const orList = xs => xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' or ' + xs[xs.length - 1];
-function tacticWords(t) {
-  const [a, b] = t.targets;
+// own: the targets are the player's pieces (the tactic is the opponent's).
+function tacticWords(t, own) {
+  const [a, b] = t.targets, at = q => pieceAt(q, own);
   const what = {
-    fork: () => `forks ${andList(t.targets.map(pieceAt))}`,
-    pin: () => `pins ${pieceAt(a)} to ${pieceAt(b)}`,
-    skewer: () => `skewers ${pieceAt(a)} and ${pieceAt(b)} behind it`,
+    fork: () => `forks ${andList(t.targets.map(at))}`,
+    pin: () => `pins ${at(a)} to ${at(b)}`,
+    skewer: () => `skewers ${at(a)} and ${at(b)} behind it`,
     discovered: () => {
       const more = t.hit.filter(q => q.type !== 'k' && !t.opened.some(o => o.square === q.square));
       return (t.opened.some(q => q.type === 'k') ? `gives a discovered check from ${pieceAt(t.via)}`
-        : (t.hit.some(q => q.type === 'k') ? 'gives check and ' : '') + `uncovers an attack by ${pieceAt(t.via)} on ${andList(t.opened.map(pieceAt))}`)
-        + (more.length ? `, while the ${PNAME[t.piece]} attacks ${andList(more.map(pieceAt))}` : '');
+        : (t.hit.some(q => q.type === 'k') ? 'gives check and ' : '') + `uncovers an attack by ${pieceAt(t.via)} on ${andList(t.opened.map(at))}`)
+        + (more.length ? `, while the ${PNAME[t.piece]} attacks ${andList(more.map(at))}` : '');
     },
     double: () => 'gives double check',
-    hanging: () => t.free ? `takes ${pieceAt(a)} for free` : `takes ${pieceAt(a)} with a ${PNAME[t.piece]}`,
+    hanging: () => t.free ? `takes ${at(a)} for free` : `takes ${at(a)} with a ${PNAME[t.piece]}`,
   }[t.motif]();
   if (t.mate) return what + (t.mate === 1 ? ', which is mate' : ', and leads to mate');
   return t.motif === 'hanging' ? what : `${what}, and wins the ${PNAME[t.wins]}`;
@@ -1183,20 +1233,44 @@ function tacticName(t) {
 }
 const tacticHint = t => `Look for ${tacticName(t)}.` + (t.ply ? ` It comes on your ${['first', 'second', 'third'][t.ply / 2]} move.` : '');
 // What the game move allowed, worked out once per puzzle: the opponent's tactic in the engine's answer.
+// When that tactic is a capture on the first reply, it also tells why the piece was loose:
+// moved (the game move put it on the square) or already (the attacker was on it before the game move: { type, square }).
 function allowedTactic(p) {
   if (p.allowed === undefined) {
     const c = new Chess(p.fen); playUci(c, p.played.uci);
     const t = findTactics(c.fen(), p.refute);
     p.allowed = t && { ...t, label: pvParts(c.fen(), p.refute)[t.ply].label };
+    const q = t && t.motif === 'hanging' && t.ply === 0 && t.targets[0];
+    if (q) {
+      const c0 = new Chess(p.fen);
+      p.allowed.moved = p.played.uci.slice(2, 4) === q.square;
+      p.allowed.already = !p.allowed.moved && c0.attackers(q.square, t.color).includes(t.from) && { ...c0.get(t.from), square: t.from };
+    }
   }
   return p.allowed;
 }
 // Sentences for the feedback box after a solve or a solution. line: the better line from the puzzle position.
-// As parts: text, and { label, k, i } for the move that starts the tactic, i.e. move i of line k (see openLines).
+// As parts: text, and { label, k, i } for a move, i.e. move i of line k (see openLines).
+// What the game move lost comes first, as it is the lesson; then the better line.
 function tacticNoteParts(p, line) {
   const out = [], t = findTactics(p.fen, line), a = allowedTactic(p);
-  if (t) out.push('The idea: ', { label: pvParts(p.fen, line)[t.ply].label, k: 'best', i: t.ply + 1 }, ` ${tacticWords(t)}.`);
-  if (a) out.push(`${t ? ' ' : ''}The game move, ${pvParts(p.fen, [p.played.uci])[0].label}, allowed `, { label: a.label, k: 'game', i: a.ply + 2 }, `, which ${tacticWords(a)}.`);
+  const bestMove = i => ({ label: pvParts(p.fen, line)[i].label, k: 'best', i: i + 1 });
+  let then = false; // the better move is told already, so the idea follows it
+  if (a) {
+    const game = { label: pvParts(p.fen, [p.played.uci])[0].label, k: 'game', i: 1 }, reply = { label: a.label, k: 'game', i: a.ply + 2 };
+    const q = a.targets[0], takes = a.free ? 'takes it for free' : `takes it with a ${PNAME[a.piece]}`;
+    if (a.mate) out.push('The game move, ', game, ', allowed ', reply, `, which ${tacticWords(a, true)}.`);
+    else {
+      out.push('The game move, ', game, `, lost your ${PNAME[a.motif === 'hanging' ? q.type : a.wins]}. `);
+      if (a.already) out.push(`Your ${PNAME[q.type]} on ${q.square} was already under attack from ${pieceAt(a.already)}, and `, reply, ` ${takes}.`);
+      else if (a.moved) out.push(`It put your ${PNAME[q.type]} on ${q.square}, where `, reply, ` ${takes}.`);
+      else out.push('It allowed ', reply, `, which ${tacticWords(a, true)}.`);
+      if (a.already && line[0] && line[0].slice(0, 2) === q.square && !(t && t.ply === 0)) {
+        out.push(' Better: ', bestMove(0), ` moves the ${PNAME[q.type]} away.`); then = true;
+      }
+    }
+  }
+  if (t) out.push(a ? ' ' : '', then ? 'Then ' : 'The idea: ', bestMove(t.ply), ` ${tacticWords(t)}.`);
   return out;
 }
 const tacticNotes = (p, line) => tacticNoteParts(p, line).map(x => typeof x === 'string' ? x : x.label).join('');
@@ -1283,9 +1357,7 @@ $('#copyAll').onclick = async () => {
 };
 
 /* ---------------- wiring ---------------- */
-$('#run').onclick = analyze;
-$('#edit').onclick = () => setEdit($('#setup').hidden);
-$('#sample').onclick = () => { $('#src').value = SAMPLE; analyze() };
+$('#paste').onclick = pasteGame;
 for (const id of ['depth', 'maxMate']) { // settings stay for the next visit
   const el = $('#' + id), v = store.get('drills.' + id);
   if ([...el.options].some(o => o.value === v)) el.value = v;
@@ -1294,14 +1366,14 @@ for (const id of ['depth', 'maxMate']) { // settings stay for the next visit
 $('#mistakes').checked = store.get('drills.mistakes') === '1';
 $('#maxMate').onchange = () => { refreshPuzzles(); drawChart() };
 $('#mistakes').onchange = () => { store.set('drills.mistakes', $('#mistakes').checked ? '1' : '0'); refreshPuzzles(); drawChart() };
-$('#src').value = store.get('drills.src') || SAMPLE;
+$('#depth').onchange = () => { if (S.src) analyze(S.src) }; // a new depth analyzes the game again
 showPosition(START, null);
 drawChart();
 Engine.start().catch(() => { $('#err').textContent = 'Stockfish could not start in this browser. Try a current Chrome, Edge, Firefox or Safari.'; $('#err').hidden = false });
-analyze();
+analyze(store.get('drills.src') || SAMPLE);
 
 // Read-only hooks for the automated tests in tests/. The app does not use them.
-window.BlunderDrills = Object.freeze({ cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, findTactics, tacticWords, tacticHint, tacticNotes, studyPgn, state: S, trainer: T, Chess });
+window.BlunderDrills = Object.freeze({ SAMPLE, cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, findTactics, tacticWords, tacticHint, tacticNotes, studyPgn, state: S, trainer: T, Chess });
 </script>
 
 </body>
