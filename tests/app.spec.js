@@ -122,6 +122,25 @@ test('compares the better line with the game line', async ({ page }) => {
 
   await best.click(); // each line keeps its place
   await expectBoardAt(page, p, p.pv, 2);
+  await expect(page.locator('#lWhich button[data-k="engine"]')).toBeHidden(); // the engine's move was found: no extra line
+});
+
+test('a good move that is not the engine\'s first choice links to the engine\'s move', async ({ page }) => {
+  await openAnalyzed(page);
+  const p = await current(page); // 20... Rb8: the engine's first choice is 20... Rc8 (+0.1), and 20... Qd6 (+0.2) also passes
+  expect(p.best).toBe('a8c8');
+  await play(page, 'd8d6');
+  await expect(page.locator('#fb')).toHaveClass(/good/, { timeout: 30_000 });
+  await expect(page.locator('#fb')).toContainText(/^Found it: Qd6 \(\S+\)\. The engine's first choice is 20\.\.\. Rc8 \(\+0\.1\)\./);
+  await expect(page.locator('#fb')).not.toContainText('also works');
+  const best = page.locator('#lWhich button[data-k="best"]'), engine = page.locator('#lWhich button[data-k="engine"]');
+  await expect(best).toHaveText('Better: 20... Qd6');
+  await expect(engine).toHaveText('Engine: 20... Rc8');
+
+  await page.locator('#fb .mvlink', { hasText: '20... Rc8' }).click();
+  await expect(engine).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#lSum')).toContainText('Engine eval for this line: +0.1');
+  await expectBoardAt(page, p, p.pv, 1);
 });
 
 test('the chart shows the eval of the better line as a branch from the game, until the puzzle closes', async ({ page }) => {

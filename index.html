@@ -290,6 +290,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       <div class="stepper" id="stepper" hidden>
         <div class="seg" id="lWhich" role="group" aria-label="Line to show">
           <button type="button" data-k="best"></button>
+          <button type="button" data-k="engine"></button>
           <button type="button" data-k="game"></button>
           <button type="button" data-k="whole">Whole game</button>
         </div>
@@ -763,18 +764,19 @@ function loadPuzzle(idx) {
   setFeedback('info', p.type === 'mate' ? 'Your move. The arrow shows the game move, which missed the mate. The engine plays the defense.' : 'Your move. The arrow shows the game move.');
   renderBoard(); renderList(); drawChart(); updateNav();
 }
-function setFeedback(kind, text, line, note) {
-  const el = $('#fb'); el.className = 'fb ' + kind; el.textContent = text;
-  if (line) { const s = document.createElement('span'); s.className = 'line'; s.textContent = line; el.appendChild(s) }
-  if (note && note.length) { // note: text, or parts from tacticNoteParts, where a move part becomes a link
-    const s = document.createElement('span'); s.className = 'note';
-    for (const x of [].concat(note)) {
-      if (typeof x === 'string') { s.append(x); continue }
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'mvlink'; b.textContent = x.label;
-      b.title = 'Show this move on the board'; b.onclick = () => showLine(x.k, x.i); s.appendChild(b);
-    }
-    el.appendChild(s);
+// Parts: strings, and moves { label, k, i } that become links to move i of line k.
+function appendParts(el, parts) {
+  for (const x of [].concat(parts)) {
+    if (typeof x === 'string') { el.append(x); continue }
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'mvlink'; b.textContent = x.label;
+    b.title = 'Show this move on the board'; b.onclick = () => showLine(x.k, x.i); el.appendChild(b);
   }
+}
+// text and note: text, or parts (see appendParts).
+function setFeedback(kind, text, line, note) {
+  const el = $('#fb'); el.className = 'fb ' + kind; el.textContent = ''; appendParts(el, text);
+  if (line) { const s = document.createElement('span'); s.className = 'line'; s.textContent = line; el.appendChild(s) }
+  if (note && note.length) { const s = document.createElement('span'); s.className = 'note'; appendParts(s, note); el.appendChild(s) }
 }
 function renderBoard() {
   const el = $('#board');
@@ -949,7 +951,11 @@ async function userMove(m) {
     if (tok !== T.token) return;
     if (!r) return engineGone();
     const ours = neg(r.score);
-    if (wc(ours) >= wc(p.before) - 0.1) return solved(`Found it: ${mv.san} also works (${fmt(forWhite(ours, p.color))}).`, [uciOf(mv), ...r.pv].slice(0, 6), ours);
+    if (wc(ours) >= wc(p.before) - 0.1) { // a good move, but not the engine's first choice: link to that one
+      const msg = [`Found it: ${mv.san} (${fmt(forWhite(ours, p.color))}).`];
+      if (p.best) msg.push(' The engine\'s first choice is ', { label: pvParts(p.fen, [p.best])[0].label, k: 'engine', i: 1 }, ` (${fmt(forWhite(p.before, p.color))}).`);
+      return solved(msg, [uciOf(mv), ...r.pv].slice(0, 6), ours, p.best && p.pv.slice(0, 6));
+    }
     wrong(mv.san, ours, p.played && uciOf(mv) === p.played.uci ? 'that is the move from the game.'
       : wc(ours) >= 0.3 ? `${sideName(p.color)} is still better, but the best move is much stronger.` : 'it still gives away too much.');
   }
@@ -958,11 +964,12 @@ const engineGone = () => setFeedback('bad', 'The engine stopped working, so this
 // line: UCI moves from the puzzle position. For a mate puzzle it is the moves played, so the board is at
 // its end. Otherwise it starts with the solving move, which is already on the board.
 // score: the engine's score of that line, for the side to move in the puzzle.
-function solved(msg, line, score) {
+// engine: the engine's first-choice line, when the solver found another good move.
+function solved(msg, line, score, engine) {
   const p = T.p; T.mode = 'done';
   if (!p.status || p.status === 'new') { p.status = T.firstTry ? 'solved' : 'retry'; saveStatus(p) }
   setFeedback('good', msg, null, tacticNoteParts(p, line));
-  openLines(line, score, p.type === 'mate' ? line.length : 1);
+  openLines(line, score, p.type === 'mate' ? line.length : 1, line, engine);
   renderList(); updateNav();
 }
 
@@ -994,7 +1001,8 @@ function wholeLine(i) {
   return { title: 'Whole game', whole: true, fen: g.positions[0], prev: null, moves, parts: pvParts(g.positions[0], moves), i };
 }
 // noteLine: the line that the feedback note describes, if it is longer than best.
-function openLines(best, score, at, noteLine = best) {
+// engine: the engine's first-choice line, shown as its own line when best is another move.
+function openLines(best, score, at, noteLine = best, engine) {
   const p = T.p, t = findTactics(p.fen, noteLine), a = allowedTactic(p);
   // The attack on the piece that the game move lost: from the start when it was already there, and after the game move.
   const th = a && (a.already || a.moved) && { threat: true, from: a.from, to: a.to, targets: a.targets };
@@ -1004,6 +1012,7 @@ function openLines(best, score, at, noteLine = best) {
     game: makeLine('Game', [p.played.uci, ...(p.refute || [])].slice(0, 6), p.after, 0, { ...start, ...(th && { 1: th }), ...(a && { [a.ply + 2]: a }) }), // +2: after the game move
     whole: wholeLine(p.ply)
   };
+  if (engine) { const e = findTactics(p.fen, engine); T.lines.engine = makeLine('Engine', engine, p.before, 0, { ...start, ...(e && { [e.ply + 1]: e }) }) }
   showLine('best');
   evalLine(T.lines.best);
 }
