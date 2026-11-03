@@ -5,3 +5,7 @@ node_modules/
 test-results/
 playwright-report/
 docs/experiments/slm-bench/profile/
+
+# Cloudflare Wrangler: the local D1 copy, caches and local secrets. Never commit them.
+.wrangler/
+.dev.vars*

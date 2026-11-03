@@ -1,0 +1,15 @@
+{
+  "name": "blunder-feedback",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "schema": "wrangler d1 execute blunder-feedback --remote --file schema.sql",
+    "read": "node read.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.156.2"
+  }
+}

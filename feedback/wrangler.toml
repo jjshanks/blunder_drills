@@ -1,0 +1,21 @@
+# The feedback Worker. See README.md in this folder.
+# This repository is public. No account_id and no tokens here: wrangler gets them from `wrangler login`.
+# The database_id is an ID, not a credential. Nobody can use it without an API token for the account.
+name = "blunder-feedback"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGINS = "https://jjshanks.github.io,http://127.0.0.1:8000"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "blunder-feedback"
+database_id = "00000000-0000-0000-0000-000000000000" # put the ID from `wrangler d1 create blunder-feedback` here
+
+# Workers rate limiting (Wrangler 4.36 or later). period is 10 or 60 seconds.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
