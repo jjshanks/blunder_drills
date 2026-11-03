@@ -262,6 +262,15 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .fstatus { margin: 0; font-size: 14px }
 .fstatus:empty { display: none }
 .fstatus.bad { color: var(--bad) }
+/* Thumbs on the advice, under the status line: quiet grey until hover or a vote. */
+.vote { display: grid; gap: 8px; margin-top: -6px }
+.vrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 14px; color: var(--muted) }
+.vrow .vbtn { font-size: 15px; padding: 2px 8px; filter: grayscale(1); opacity: .7 }
+.vrow .vbtn:hover:not(:disabled), .vrow .vbtn[aria-pressed="true"] { filter: none; opacity: 1 }
+.vrow .vbtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent) }
+.vmsg { font-size: 13px; margin-left: 4px }
+.vmsg.bad { color: var(--bad) }
+.vwhy { display: grid; gap: 6px; font-size: 14px; color: var(--muted) }
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0 } /* the honeypot: a bot fills it, a person does not see it */
 </style>
 </head>
@@ -310,6 +319,19 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
         </div>
       </div>
       <div class="fb info" id="fb" aria-live="polite">Click a piece, then click where it goes.</div>
+      <div class="vote" id="vote" hidden>
+        <div class="vrow" role="group" aria-labelledby="voteQ">
+          <span id="voteQ">Was this explanation right?</span>
+          <button class="btn util vbtn" type="button" data-vote="1" aria-pressed="false" aria-label="Yes" title="Yes, it was right">👍</button>
+          <button class="btn util vbtn" type="button" data-vote="-1" aria-pressed="false" aria-label="No" title="No, it was wrong">👎</button>
+          <span class="vmsg" id="voteMsg" role="status"></span>
+        </div>
+        <form class="vwhy" id="voteWhy" hidden>
+          <label for="voteText">What was wrong? (optional)</label>
+          <textarea class="ftext" id="voteText" rows="2" maxlength="1000" required></textarea>
+          <div class="row"><button class="btn" id="voteSend" type="submit">Send</button></div>
+        </form>
+      </div>
       <div class="stepper" id="stepper" hidden>
         <div class="seg" id="lWhich" role="group" aria-label="Line to show">
           <button type="button" data-k="best"></button>
@@ -549,7 +571,7 @@ function parseInput(raw) {
 
 /* ---------------- state ---------------- */
 const S = { src: null, game: null, evals: [], puzzles: [], who: 'all', run: 0, analyzedDepth: 0, current: -1, done: false, key: null, progress: {} };
-const T = { p: null, chess: null, orient: 'w', sel: null, last: null, mode: 'idle', left: 0, token: 0, hint: null, legal: [], pending: null, line: null, lines: null };
+const T = { p: null, chess: null, orient: 'w', sel: null, last: null, mode: 'idle', left: 0, token: 0, hint: null, legal: [], pending: null, line: null, lines: null, advice: null };
 
 const moveLabel = (m) => m.color === 'w' ? `${m.moveNo}. ${m.san}` : `${m.moveNo}… ${m.san}`;
 const sideName = c => c === 'w' ? 'White' : 'Black';
@@ -826,6 +848,7 @@ function setFeedback(kind, text, line, note) {
   const el = $('#fb'); el.className = 'fb ' + kind; el.textContent = ''; appendParts(el, text);
   if (line) { const s = document.createElement('span'); s.className = 'line'; s.textContent = line; el.appendChild(s) }
   if (note && note.length) { const s = document.createElement('span'); s.className = 'note'; appendParts(s, note); el.appendChild(s) }
+  T.advice = null; $('#vote').hidden = true; // the thumbs belong to one piece of advice; askVote shows them again
 }
 function renderBoard() {
   const el = $('#board');
@@ -1017,7 +1040,8 @@ const engineGone = () => setFeedback('bad', 'The engine stopped working, so this
 function solved(msg, line, score, engine) {
   const p = T.p; T.mode = 'done';
   if (!p.status || p.status === 'new') { p.status = T.firstTry ? 'solved' : 'retry'; saveStatus(p); track(T.firstTry ? 'puzzle-solved' : 'puzzle-solved-retry') }
-  setFeedback('good', msg, null, tacticNoteParts(p, line));
+  const note = tacticNoteParts(p, line);
+  setFeedback('good', msg, null, note); askVote(p, line, note);
   openLines(line, score, p.type === 'mate' ? line.length : 1, line, engine);
   renderList(); updateNav();
 }
@@ -1336,7 +1360,8 @@ function showSolution() {
   const p = T.p; if (!p) return;
   if (p.status !== 'solved' && p.status !== 'retry') { if (p.status !== 'revealed') track('puzzle-revealed'); p.status = 'revealed'; saveStatus(p) }
   T.mode = 'show';
-  setFeedback('info', 'Solution. Compare it with the game line below.', null, tacticNoteParts(p, p.pv));
+  const note = tacticNoteParts(p, p.pv);
+  setFeedback('info', 'Solution. Compare it with the game line below.', null, note); askVote(p, p.pv, note);
   openLines(p.type === 'mate' ? p.pv : p.pv.slice(0, 6), p.before, 0, p.pv);
   if (!autoplayOn()) lineGo(1); // play the solving move, so that the board shows it (autoplay plays it anyway)
   renderList(); updateNav();
@@ -1429,6 +1454,54 @@ async function sendFeedback(body) {
 }
 // The puzzle on the board, for a message: the position, the game move, the engine line and its refutation.
 const puzzleInfo = p => ({ fen: p.fen, type: p.type, played: p.played.uci, line: (p.pv || []).slice(0, 12), refute: (p.refute || []).slice(0, 12) });
+// The same, with the advice the user judged: the line it explains (the solver's line or the engine's), the
+// motifs, and the exact text. With these, a thumbs-down can become a test of findTactics(fen, line).
+const adviceInfo = a => ({ ...puzzleInfo(a.p), line: a.line.slice(0, 12), idea: a.idea, allowed: a.allowed, note: a.note });
+// What to send with a message: the advice when it is on screen, else the puzzle.
+const boardInfo = () => T.advice && T.advice.p === T.p ? adviceInfo(T.advice) : puzzleInfo(T.p);
+
+// Thumbs on the advice (T.advice). One vote for each puzzle and advice for each page load, kept in memory only.
+// A changed vote is a new row; the last one wins when we read.
+const votes = new Map();
+const voteKey = a => a.p.fen + '\n' + a.note;
+const pressVote = v => { for (const b of $('#vote').querySelectorAll('[data-vote]')) b.setAttribute('aria-pressed', String(+b.dataset.vote === v)) };
+function voteMsg(text, bad) { const m = $('#voteMsg'); m.textContent = text; m.className = 'vmsg' + (bad ? ' bad' : '') }
+// After setFeedback shows the advice (parts, from tacticNoteParts) for the better line. No note: nothing to judge.
+function askVote(p, line, parts) {
+  if (!FEEDBACK_URL || !parts.length) return;
+  const t = findTactics(p.fen, line), a = allowedTactic(p);
+  T.advice = { p, line, note: parts.map(x => typeof x === 'string' ? x : x.label).join(''), idea: t ? t.motif : null, allowed: a ? a.motif : null };
+  pressVote(votes.get(voteKey(T.advice))); voteMsg('');
+  $('#voteWhy').hidden = true; $('#voteText').value = ''; $('#vote').hidden = false;
+}
+async function sendVote(v) {
+  const a = T.advice; if (!a) return;
+  const key = voteKey(a), before = votes.get(key);
+  if (before === v) return;
+  votes.set(key, v); pressVote(v); voteMsg('');
+  try {
+    await sendFeedback({ kind: 'vote', vote: v, puzzle: adviceInfo(a) });
+    if (T.advice !== a) return;
+    voteMsg('Thanks.'); $('#voteWhy').hidden = v !== -1;
+  } catch {
+    if (votes.get(key) === v) { if (before === undefined) votes.delete(key); else votes.set(key, before) }
+    if (T.advice !== a) return;
+    pressVote(votes.get(key)); voteMsg('Could not send. Try again later.', true);
+  }
+}
+for (const b of $('#vote').querySelectorAll('[data-vote]')) b.onclick = () => sendVote(+b.dataset.vote);
+$('#voteWhy').onsubmit = async e => {
+  e.preventDefault();
+  const a = T.advice, text = $('#voteText').value.trim(), send = $('#voteSend');
+  if (!a || !text) return;
+  send.disabled = true; send.textContent = 'Sending…';
+  try {
+    await sendFeedback({ kind: 'text', text, puzzle: adviceInfo(a) });
+    if (T.advice === a) { $('#voteText').value = ''; $('#voteWhy').hidden = true; voteMsg('Thanks. We read every message.') }
+  } catch {
+    if (T.advice === a) voteMsg('Could not send. Try again later.', true); // the text stays in the box
+  } finally { send.disabled = false; send.textContent = 'Send' }
+};
 
 function openFeedback() {
   $('#fbPosRow').hidden = !T.p; $('#fbPos').checked = true;
@@ -1444,7 +1517,7 @@ $('#fbForm').onsubmit = async e => {
   if (!text) return;
   send.disabled = true; send.textContent = 'Sending…'; status.textContent = ''; status.className = 'fstatus';
   try {
-    await sendFeedback({ kind: 'text', text, hp: $('#fbHp').value, ...(T.p && $('#fbPos').checked && { puzzle: puzzleInfo(T.p) }) });
+    await sendFeedback({ kind: 'text', text, hp: $('#fbHp').value, ...(T.p && $('#fbPos').checked && { puzzle: boardInfo() }) });
     $('#fbText').value = ''; fbCount();
     status.textContent = 'Thanks. We read every message.'; send.hidden = true; $('#fbCancel').textContent = 'Close';
   } catch {
