@@ -12,7 +12,7 @@ ALLOWED_ORIGINS = "https://jjshanks.github.io,http://127.0.0.1:8000"
 [[d1_databases]]
 binding = "DB"
 database_name = "blunder-feedback"
-database_id = "00000000-0000-0000-0000-000000000000" # put the ID from `wrangler d1 create blunder-feedback` here
+database_id = "42d35b68-9d3b-4f3f-9597-07e41478d7e2" # put the ID from `wrangler d1 create blunder-feedback` here
 
 # Workers rate limiting (Wrangler 4.36 or later). period is 10 or 60 seconds.
 [[ratelimits]]
