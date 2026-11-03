@@ -4,12 +4,15 @@ import { test, expect } from '@playwright/test';
 
 const URL_ = 'https://feedback.test/feedback';
 
-// Serve the page with FEEDBACK_URL set to url ('' turns the feedback UI off).
+// Serve the page with FEEDBACK_URL set to url ('' turns the feedback UI off). Also, a test can set
+// window.noNoteFor to a FEN: that position then gets no tactic note, as when the tactics checker finds nothing.
 async function serveWithUrl(page, url) {
   await page.route(u => u.pathname === '/', async route => {
     const r = await route.fetch(), html = await r.text();
-    const out = html.replace(/^const FEEDBACK_URL = '[^']*';/m, `const FEEDBACK_URL = '${url}';`);
-    expect(out, 'the page has a FEEDBACK_URL line').not.toBe(url ? html : null);
+    const out = html.replace(/^const FEEDBACK_URL = '[^']*';/m, `const FEEDBACK_URL = '${url}';`)
+      .replace(/^function tacticNoteParts\(p, line\) \{$/m, '$& if (window.noNoteFor === p.fen) return [];');
+    expect(out, 'the page has a FEEDBACK_URL line').toMatch(new RegExp(`^const FEEDBACK_URL = '${url}';$`, 'm'));
+    expect(out, 'the page has a tacticNoteParts line').toContain('window.noNoteFor');
     await route.fulfill({ response: r, body: out });
   });
 }
@@ -84,7 +87,7 @@ test('a failed send says so and keeps the text; an empty message is not sent', a
 });
 
 // With the real engine (needs network), on the sample game at depth 14, as in app.spec.js.
-test('thumbs on the advice: a vote, a changed vote, a note after a thumbs-down, and memory for the page load', async ({ page }) => {
+test('thumbs on the advice and on a solution with no note: a vote, a changed vote, a note after a thumbs-down, and memory for the page load', async ({ page }) => {
   await page.addInitScript(() => { if (!localStorage.getItem('drills.depth')) localStorage.setItem('drills.depth', '14') });
   await serveWithUrl(page, URL_);
   const sent = await catchSends(page);
@@ -103,7 +106,7 @@ test('thumbs on the advice: a vote, a changed vote, a note after a thumbs-down, 
   await expect(up).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#voteMsg')).toHaveText('Thanks.');
   await expect(page.locator('#voteWhy')).toBeHidden();
-  const advice = { fen: p.fen, type: 'blunder', played: p.played, line: p.pv.slice(0, 12), refute: p.refute.slice(0, 12), idea: null, allowed: 'fork', note };
+  const advice = { fen: p.fen, type: 'blunder', played: p.played, target: 'advice', line: p.pv.slice(0, 12), refute: p.refute.slice(0, 12), idea: null, allowed: 'fork', note };
   expect(sent.map(s => s.body)).toEqual([{ v: 1, page: expect.stringMatching(/^[0-9a-f]{12}$/), app: 'dev', hp: '', kind: 'vote', vote: 1, puzzle: advice }]);
   await up.click(); // the same vote again: nothing to send
   await down.click(); // a changed vote is a new row
@@ -145,4 +148,24 @@ test('thumbs on the advice: a vote, a changed vote, a note after a thumbs-down, 
   await expect(down).toHaveAttribute('aria-pressed', 'true');
   await expect(up).toHaveAttribute('aria-pressed', 'false');
   expect(sent).toHaveLength(5);
+
+  // A solution with no tactic note: the thumbs judge the solution.
+  sent.status = 200;
+  await page.locator('#bNext').click();
+  await page.evaluate(() => { window.noNoteFor = window.BlunderDrills.trainer.p.fen });
+  await page.locator('#bSol').click();
+  await expect(page.locator('#fb')).toHaveText('Solution. Compare it with the game line below.');
+  await expect(vote.getByRole('group', { name: 'Was this solution helpful?' })).toBeVisible();
+  await expect(up).toHaveAttribute('aria-pressed', 'false');
+  await down.click();
+  await expect(page.locator('#voteWhy')).toBeVisible();
+  await expect(page.getByLabel('What was missing? (optional)')).toBeVisible();
+  const fen = await page.evaluate(() => window.noNoteFor);
+  expect(sent[5].body).toMatchObject({ kind: 'vote', vote: -1, puzzle: { fen, target: 'solution', note: '' } });
+  await page.locator('#bPrev').click(); // back to the advice: the question and the label come back
+  await page.locator('#bSol').click();
+  await expect(vote.getByRole('group', { name: 'Was this explanation right?' })).toBeVisible();
+  await down.click(); // already down: nothing to send, so the note box stays closed
+  await expect(page.locator('#voteWhy')).toBeHidden();
+  expect(sent).toHaveLength(6);
 });

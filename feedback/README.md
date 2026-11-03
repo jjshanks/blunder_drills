@@ -46,7 +46,7 @@ To deploy a change later: `npm run deploy` in this folder.
 At the repository root:
 
 ```sh
-npm run feedback        # the last 50 rows, and the thumbs score for each pair of motifs
+npm run feedback        # the last 50 rows, and the thumbs score for each target and pair of motifs
 ```
 
 For other queries:

@@ -1,6 +1,6 @@
 # Blunder Drills: In-Page Feedback Plan
 
-Written 2026-11-01. Status (2026-11-02): built, with tests. The Worker is deployed at `https://blunder-feedback.jjshanks.workers.dev/feedback`, and `FEEDBACK_URL` points to it. Where the code differs from the first plan, this file now says what the code does.
+Written 2026-11-01. Status (2026-11-03): built, with tests. Thumbs show on every solution since 2026-11-03 (see decision 2). The Worker is deployed at `https://blunder-feedback.jjshanks.workers.dev/feedback`, and `FEEDBACK_URL` points to it. Where the code differs from the first plan, this file now says what the code does.
 
 **Decision (2026-11-01):** use a Cloudflare Worker and D1. The other options are kept below as a record of why.
 
@@ -8,7 +8,7 @@ Written 2026-11-01. Status (2026-11-02): built, with tests. The Worker is deploy
 
 People who use the site can tell us what they think, without leaving the page and without an account:
 
-- **Thumbs up or thumbs down** on the advice for a puzzle ("The idea: …", "The game move … allowed …").
+- **Thumbs up or thumbs down** on the advice for a puzzle ("The idea: …", "The game move … allowed …"), or on the solution when it has no advice.
 - **Free text** about the puzzle, or about the site in general.
 
 The cost must be zero. The page stays one `index.html` with no build step, MIT licensed.
@@ -45,18 +45,19 @@ If we ever must move away from Cloudflare, Apps Script + Sheet is the fallback. 
 
 ## What the user sees
 
-### 1. Thumbs on the advice
+### 1. Thumbs on the advice or the solution
 
 After a solve or "Show solution", the feedback box (`#fb`) shows the advice. Under it, add one quiet row:
 
 ```
-Was this explanation right?   👍   👎
+Was this explanation right?   👍   👎      (when there is a tactic note: target "advice")
+Was this solution helpful?    👍   👎      (when there is no note: target "solution")
 ```
 
 - Put the row **next to** `#fb`, not in it. `#fb` is an `aria-live` region and `setFeedback()` replaces its content. A row inside it would be cleared and read aloud again.
-- Show the row only when the advice has a tactic note (`tacticNoteParts(p, …)` is not empty). Without a note there is nothing to judge.
+- Show the row after every solution. When `tacticNoteParts(p, …)` is empty, the row asks about the solution. A 👎 there often means that the tactics checker missed an idea, and the row holds the FEN and line to find it. The `puzzle` object has a `target` field (`advice` or `solution`), so the two kinds of vote are scored apart. Rows from before the field have no `target`; they are all advice.
 - After a click: the chosen thumb stays pressed (`aria-pressed="true"`), and a short text says "Thanks." A second click on the other thumb changes the vote.
-- After a 👎, open a small optional text box under the row: "What was wrong? (optional)" with a **Send** button.
+- After a 👎, open a small optional text box under the row: "What was wrong? (optional)" (for a solution: "What was missing? (optional)") with a **Send** button.
 - One vote for each puzzle for each page load. The page remembers it in memory only.
 
 ### 2. General feedback
@@ -157,7 +158,7 @@ Add an npm script:
 npm run feedback            # last 50 messages, and votes by motif
 ```
 
-It runs `feedback/read.mjs`, which runs `wrangler d1 execute blunder-feedback --remote --command "…"` for each query. The advice score counts one vote for each page load, puzzle and note (the last row wins), and groups by the pair of motifs: what the game move allowed, and the idea of the better line. One note can tell both, so a thumbs-down cannot say which part was wrong. The queries are in `read.mjs`, and `tests/feedback-worker.spec.js` checks them against the real schema.
+It runs `feedback/read.mjs`, which runs `wrangler d1 execute blunder-feedback --remote --command "…"` for each query. The advice score counts one vote for each page load, puzzle and note (the last row wins), and groups by the target and the pair of motifs: what the game move allowed, and the idea of the better line. One note can tell both, so a thumbs-down cannot say which part was wrong. The queries are in `read.mjs`, and `tests/feedback-worker.spec.js` checks them against the real schema.
 
 The Cloudflare dashboard also has a D1 console, so you can read the data from a phone.
 
@@ -221,7 +222,7 @@ Done (2026-11-02): the code and the tests for all four steps. To do, by you:
 ## Decisions on the open questions (2026-11-02)
 
 1. **Repo visibility.** Closed: the repo is public, and Pages serves `https://jjshanks.github.io/blunder_drills/`. The allowed origin `https://jjshanks.github.io` is correct (an origin has no path).
-2. **Where to put thumbs.** On the tactic advice only. The free-text dialog takes comments about the puzzle.
+2. **Where to put thumbs.** First on the tactic advice only. Changed 2026-11-03: on every solution, because a solution with no note gave no way to report a missed tactic. The question and the `target` field tell the two cases apart. The free-text dialog takes other comments about the puzzle.
 3. **Reply to users?** No email field. The data holds no personal information.
 
 ## Sources

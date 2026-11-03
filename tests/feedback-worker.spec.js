@@ -33,6 +33,7 @@ test.describe('validate', () => {
     expect(validate(text({ text: '  Nice site.  ' })).row).toEqual({ kind: 'text', vote: null, text: 'Nice site.', page: 'a1b2c3d4', app: 'dev', puzzle: null });
     expect(validate(text({ puzzle: PUZZLE, app: undefined })).row.app).toBe(null);
     expect(validate(vote({ hp: undefined }))).toHaveProperty('row');
+    for (const target of ['advice', 'solution']) expect(validate(vote({ puzzle: { ...PUZZLE, target } }))).toHaveProperty('row');
   });
 
   test('a full honeypot is spam', () => {
@@ -50,6 +51,7 @@ test.describe('validate', () => {
       [vote({ puzzle: [] }), 'puzzle'], [vote({ puzzle: { ...PUZZLE, pgn: '1. e4' } }), 'puzzle.pgn'],
       [vote({ puzzle: { ...PUZZLE, fen: 'not a fen' } }), 'puzzle.fen'], [vote({ puzzle: { ...PUZZLE, fen: FEN + ' '.repeat(LIMITS.fen) } }), 'puzzle.fen'],
       [vote({ puzzle: { ...PUZZLE, type: 'brilliant' } }), 'puzzle.type'], [vote({ puzzle: { ...PUZZLE, played: 'Rb8' } }), 'puzzle.played'],
+      [vote({ puzzle: { ...PUZZLE, target: 'puzzle' } }), 'puzzle.target'], [vote({ puzzle: { ...PUZZLE, target: null } }), 'puzzle.target'],
       [vote({ puzzle: { ...PUZZLE, line: Array(LIMITS.moves + 1).fill('e2e4') } }), 'puzzle.line'], [vote({ puzzle: { ...PUZZLE, refute: ['e2e9'] } }), 'puzzle.refute'],
       [vote({ puzzle: { ...PUZZLE, idea: 'Fork!' } }), 'puzzle.idea'], [vote({ puzzle: { ...PUZZLE, allowed: 3 } }), 'puzzle.allowed'],
       [vote({ puzzle: { ...PUZZLE, note: 'x'.repeat(LIMITS.note + 1) } }), 'puzzle.note'],
@@ -134,15 +136,18 @@ test.describe('handler', () => {
   });
 });
 
-test('the read queries: the last vote for each page, puzzle and note wins', async () => {
+test('the read queries: the last vote for each page, puzzle and note wins, and each target has its own score', async () => {
   const e = env();
-  const fork = { ...PUZZLE, idea: 'fork', allowed: null, note: 'The idea: 33. Qe8+ forks the king.' };
-  for (const b of [vote({ vote: 1 }), vote({ vote: -1 }), vote({ page: 'ffff0000', vote: -1 }), vote({ puzzle: fork, vote: -1 }), vote({ puzzle: fork, vote: 1 }), text()]) {
+  const fork = { ...PUZZLE, target: 'advice', idea: 'fork', allowed: null, note: 'The idea: 33. Qe8+ forks the king.' };
+  const sol = { ...PUZZLE, target: 'solution', idea: null, allowed: 'fork', note: '' }; // same motifs as PUZZLE, no note
+  // PUZZLE has no target, as in the rows from before the field: it counts as advice.
+  for (const b of [vote({ vote: 1 }), vote({ vote: -1 }), vote({ page: 'ffff0000', vote: -1 }), vote({ puzzle: fork, vote: -1 }), vote({ puzzle: fork, vote: 1 }), vote({ puzzle: sol, vote: -1 }), text()]) {
     expect((await worker.fetch(post(b), e)).status).toBe(200);
   }
-  expect(e.DB.db.prepare(RECENT).all().map(r => r.kind)).toEqual(['text', 'vote', 'vote', 'vote', 'vote', 'vote']);
+  expect(e.DB.db.prepare(RECENT).all().map(r => r.kind + ' ' + r.target)).toEqual(['text advice', 'vote solution', 'vote advice', 'vote advice', 'vote advice', 'vote advice', 'vote advice']);
   expect(e.DB.db.prepare(MOTIFS).all().map(r => ({ ...r }))).toEqual([
-    { allowed: 'fork', idea: null, up: 0, down: 2 }, // a1b2c3d4 changed its vote to down; ffff0000 voted down
-    { allowed: null, idea: 'fork', up: 1, down: 0 },
+    { target: 'advice', allowed: 'fork', idea: null, up: 0, down: 2 }, // a1b2c3d4 changed its vote to down; ffff0000 voted down
+    { target: 'solution', allowed: 'fork', idea: null, up: 0, down: 1 },
+    { target: 'advice', allowed: null, idea: 'fork', up: 1, down: 0 },
   ]);
 });

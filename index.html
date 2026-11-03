@@ -322,12 +322,12 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       <div class="vote" id="vote" hidden>
         <div class="vrow" role="group" aria-labelledby="voteQ">
           <span id="voteQ">Was this explanation right?</span>
-          <button class="btn util vbtn" type="button" data-vote="1" aria-pressed="false" aria-label="Yes" title="Yes, it was right">👍</button>
-          <button class="btn util vbtn" type="button" data-vote="-1" aria-pressed="false" aria-label="No" title="No, it was wrong">👎</button>
+          <button class="btn util vbtn" type="button" data-vote="1" aria-pressed="false" aria-label="Yes" title="Yes">👍</button>
+          <button class="btn util vbtn" type="button" data-vote="-1" aria-pressed="false" aria-label="No" title="No">👎</button>
           <span class="vmsg" id="voteMsg" role="status"></span>
         </div>
         <form class="vwhy" id="voteWhy" hidden>
-          <label for="voteText">What was wrong? (optional)</label>
+          <label for="voteText" id="voteWhyQ">What was wrong? (optional)</label>
           <textarea class="ftext" id="voteText" rows="2" maxlength="1000" required></textarea>
           <div class="row"><button class="btn" id="voteSend" type="submit">Send</button></div>
         </form>
@@ -1454,23 +1454,27 @@ async function sendFeedback(body) {
 }
 // The puzzle on the board, for a message: the position, the game move, the engine line and its refutation.
 const puzzleInfo = p => ({ fen: p.fen, type: p.type, played: p.played.uci, line: (p.pv || []).slice(0, 12), refute: (p.refute || []).slice(0, 12) });
-// The same, with the advice the user judged: the line it explains (the solver's line or the engine's), the
-// motifs, and the exact text. With these, a thumbs-down can become a test of findTactics(fen, line).
-const adviceInfo = a => ({ ...puzzleInfo(a.p), line: a.line.slice(0, 12), idea: a.idea, allowed: a.allowed, note: a.note });
+// The same, with what the user judged: the target ('advice' for a tactic note, 'solution' when there is no
+// note), the line (the solver's line or the engine's), the motifs, and the exact note. With these, a thumbs-down
+// on advice can become a test of findTactics(fen, line).
+const adviceInfo = a => ({ ...puzzleInfo(a.p), target: a.target, line: a.line.slice(0, 12), idea: a.idea, allowed: a.allowed, note: a.note });
 // What to send with a message: the advice when it is on screen, else the puzzle.
 const boardInfo = () => T.advice && T.advice.p === T.p ? adviceInfo(T.advice) : puzzleInfo(T.p);
 
-// Thumbs on the advice (T.advice). One vote for each puzzle and advice for each page load, kept in memory only.
+// Thumbs on the solution and its advice (T.advice). One vote for each puzzle and note for each page load, kept in memory only.
 // A changed vote is a new row; the last one wins when we read.
 const votes = new Map();
 const voteKey = a => a.p.fen + '\n' + a.note;
 const pressVote = v => { for (const b of $('#vote').querySelectorAll('[data-vote]')) b.setAttribute('aria-pressed', String(+b.dataset.vote === v)) };
 function voteMsg(text, bad) { const m = $('#voteMsg'); m.textContent = text; m.className = 'vmsg' + (bad ? ' bad' : '') }
-// After setFeedback shows the advice (parts, from tacticNoteParts) for the better line. No note: nothing to judge.
+// After setFeedback shows a solution and its advice (parts, from tacticNoteParts) for the better line. With a
+// note, the thumbs judge the note. With no note, they judge the solution, so a missed tactic can be reported too.
 function askVote(p, line, parts) {
-  if (!FEEDBACK_URL || !parts.length) return;
-  const t = findTactics(p.fen, line), a = allowedTactic(p);
-  T.advice = { p, line, note: parts.map(x => typeof x === 'string' ? x : x.label).join(''), idea: t ? t.motif : null, allowed: a ? a.motif : null };
+  if (!FEEDBACK_URL) return;
+  const t = findTactics(p.fen, line), a = allowedTactic(p), target = parts.length ? 'advice' : 'solution';
+  T.advice = { p, line, target, note: parts.map(x => typeof x === 'string' ? x : x.label).join(''), idea: t ? t.motif : null, allowed: a ? a.motif : null };
+  $('#voteQ').textContent = target === 'advice' ? 'Was this explanation right?' : 'Was this solution helpful?';
+  $('#voteWhyQ').textContent = target === 'advice' ? 'What was wrong? (optional)' : 'What was missing? (optional)';
   pressVote(votes.get(voteKey(T.advice))); voteMsg('');
   $('#voteWhy').hidden = true; $('#voteText').value = ''; $('#vote').hidden = false;
 }

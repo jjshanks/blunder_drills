@@ -67,9 +67,10 @@ published page, so that each feedback row tells which code gave the advice.
 ## Feedback and privacy
 
 People can send feedback from the page: thumbs up or down on the explanation
-after a puzzle, and free text from the **Feedback** link. A small Cloudflare
-Worker stores each send in a Cloudflare D1 database. Its code is in `feedback/`;
-`feedback/README.md` tells how to deploy it and read the data.
+after a puzzle (or on the solution, when it has no explanation), and free text
+from the **Feedback** link. A small Cloudflare Worker stores each send in a
+Cloudflare D1 database. Its code is in `feedback/`; `feedback/README.md` tells
+how to deploy it and read the data.
 
 What is stored: the message or the vote, the puzzle position, its engine lines,
 the explanation that was judged, the app version, a random ID for the page
@@ -84,7 +85,7 @@ To read the feedback (it needs `npx wrangler login` in `feedback/` first):
 
 ```sh
 npm --prefix feedback ci   # once
-npm run feedback           # the last 50 rows, and the thumbs score for each pair of motifs
+npm run feedback           # the last 50 rows, and the thumbs score for each target and pair of motifs
 ```
 
 ## License

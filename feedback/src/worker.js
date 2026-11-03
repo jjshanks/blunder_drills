@@ -11,7 +11,8 @@ const PAGE = /^[0-9a-f]{8,32}$/; // a random id that the page makes at load; it 
 const FEN = /^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]{1,4}) (-|[a-h][36]) \d+ \d+$/;
 const TYPES = ['mate', 'blunder', 'mistake'];
 const FIELDS = ['v', 'kind', 'vote', 'text', 'page', 'app', 'puzzle', 'hp'];
-const PUZZLE_FIELDS = ['fen', 'type', 'played', 'line', 'refute', 'idea', 'allowed', 'note'];
+const PUZZLE_FIELDS = ['fen', 'type', 'played', 'target', 'line', 'refute', 'idea', 'allowed', 'note'];
+const TARGETS = ['advice', 'solution']; // what a vote judges: the tactic note, or the solution when it has no note
 
 // Control characters, but not tab and newline. `npm run feedback` prints the text in a terminal, where escape
 // codes could change what the terminal shows.
@@ -31,6 +32,7 @@ function puzzleError(p) {
   if (!isText(p.fen, LIMITS.fen) || !FEN.test(p.fen)) return 'puzzle.fen';
   if (!TYPES.includes(p.type)) return 'puzzle.type';
   if (typeof p.played !== 'string' || !UCI.test(p.played)) return 'puzzle.played';
+  if (p.target !== undefined && !TARGETS.includes(p.target)) return 'puzzle.target';
   for (const k of ['line', 'refute']) if (p[k] !== undefined && !isLine(p[k])) return 'puzzle.' + k;
   for (const k of ['idea', 'allowed']) if (p[k] !== undefined && !isMotif(p[k])) return 'puzzle.' + k;
   if (p.note !== undefined && !isText(p.note, LIMITS.note)) return 'puzzle.note';
@@ -50,7 +52,7 @@ export function validate(b) {
   if (b.kind === 'vote') {
     if (b.vote !== 1 && b.vote !== -1) return { error: 'vote' };
     if (b.text !== undefined) return { error: 'text' };
-    if (b.puzzle === undefined) return { error: 'puzzle' }; // a vote is about the advice for a puzzle
+    if (b.puzzle === undefined) return { error: 'puzzle' }; // a vote is about the solution or advice for a puzzle
   } else if (b.kind === 'text') {
     if (b.vote !== undefined) return { error: 'vote' };
     if (!isText(b.text, LIMITS.text) || !b.text.trim()) return { error: 'text' };
