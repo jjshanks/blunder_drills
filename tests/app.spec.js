@@ -498,6 +498,23 @@ test('a clipboard that does not hold a game shows an error and keeps the current
   await expect(page.locator('#gsum')).toHaveText('Martin Reyes vs Priya Nair · 1-0 · 44 moves');
 });
 
+// No engine: the hint changes when the game is parsed, before the analysis.
+test('the sample game says how to paste your own game, until you do', async ({ page }) => {
+  await page.route('https://unpkg.com/**', route => route.abort());
+  await page.goto('/');
+  const hint = page.locator('#sampleHint');
+  await expect(hint).toHaveText('This is a sample game. To drill your own, open one of your games on Lichess or Chess.com, copy its PGN (look under Share or Export), then click Paste game.');
+  await pasteGame(page, 'not a game');
+  await expect(page.locator('#err')).toBeVisible();
+  await expect(hint).toBeVisible(); // a failed paste keeps the sample, so the hint stays
+  await pasteGame(page, '[White "A"]\n[Black "B"]\n\n1. e4 e5 2. Nf3 Nc6 *');
+  await expect(page.locator('#gsum')).toHaveText('A vs B · 2 moves');
+  await expect(hint).toBeHidden();
+  await page.reload(); // the pasted game is in storage
+  await expect(page.locator('#gsum')).toHaveText('A vs B · 2 moves');
+  await expect(hint).toBeHidden();
+});
+
 test('Fast · 10 is the default engine depth', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#depth option[selected]')).toHaveAttribute('value', '10');

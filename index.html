@@ -295,6 +295,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
         <p class="gsum" id="gsum" hidden></p>
         <button class="gpaste" id="paste" type="button" title="Analyze the game (PGN) that you copied">Paste game</button>
       </div>
+      <p class="note" id="sampleHint" hidden>This is a sample game. To drill your own, open one of your games on Lichess or Chess.com, copy its PGN (look under Share or Export), then click <b>Paste game</b>.</p>
       <p class="err" id="err" hidden></p>
       <div class="progress" id="prog" hidden>
         <div class="bar"><div id="barFill"></div></div>
@@ -586,6 +587,7 @@ async function analyze(src, pasted) {
   try { game = parseInput(src) } catch (e) { showErr(e.message); return }
   if (pasted) track('game-pasted');
   store.set('drills.src', src); S.src = src;
+  $('#sampleHint').hidden = src !== SAMPLE; // until the user pastes a game: how to get their own game in
   const run = ++S.run;
   const depth = +$('#depth').value;
   S.game = game; S.evals = new Array(game.positions.length); S.puzzles = []; S.analyzedDepth = depth; S.current = -1; S.done = false;
