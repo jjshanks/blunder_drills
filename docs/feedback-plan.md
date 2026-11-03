@@ -1,6 +1,6 @@
 # Blunder Drills: In-Page Feedback Plan
 
-Written 2026-11-01. Status: a plan. No code yet.
+Written 2026-11-01. Status (2026-11-02): built, with tests. It waits for the first Worker deploy and for `FEEDBACK_URL` (see "Steps"). Where the code differs from the first plan, this file now says what the code does.
 
 **Decision (2026-11-01):** use a Cloudflare Worker and D1. The other options are kept below as a record of why.
 
@@ -61,10 +61,10 @@ Was this explanation right?   👍   👎
 
 ### 2. General feedback
 
-A small **Feedback** link in the page header or at the end of the page. It opens a `<dialog>` with:
+A small **Feedback** link in the page header, next to the engine status. It opens a `<dialog>` with:
 
 - A text box (max 1000 characters, with a counter).
-- A check box, on by default when a puzzle is on the board: "Include this puzzle position".
+- A check box, on by default when a puzzle is on the board: "Include this puzzle position". When the advice is on screen, the message also takes the advice (the same `puzzle` object as a vote).
 - A short privacy line (see "Privacy").
 - **Send** and **Cancel**.
 
@@ -74,6 +74,7 @@ A small **Feedback** link in the page header or at the end of the page. It opens
 - Done: "Thanks. We read every message."
 - Failed (offline, rate limit, server down): "Could not send. Try again later." Keep the text in the box. No retry queue.
 - If `FEEDBACK_URL` is empty, hide all feedback UI. Local copies and forks then work with no errors.
+- A key pressed in the dialog does not work the puzzle shortcuts (H, S, R, P, N, the arrows).
 
 ## What the page sends
 
@@ -85,23 +86,26 @@ One JSON object for each send. The body goes as `text/plain`, so the browser doe
   "kind": "vote",                 // "vote" | "text"
   "vote": -1,                     // 1 | -1, only for "vote"
   "text": "The knight is pinned, so this is not a fork.",  // only for "text", max 1000 chars
-  "page": "a1b2c3",               // random id made at page load; not stored in the browser
-  "app": "2026-11-01",            // APP_VERSION constant in index.html
+  "page": "a1b2c3d4e5f6",         // 12 random hex digits made at page load; not stored in the browser
+  "app": "5143ba6",               // APP_VERSION: 'dev' in the source; the deploy job writes the short commit SHA
   "puzzle": {                     // only if a puzzle is on the board (and the box is checked)
     "fen": "r1bqkb1r/…",
     "type": "blunder",            // "mate" | "blunder" | "mistake"
     "played": "e2e4",
-    "best": ["d2d4", "…"],        // p.pv, the first 8 moves
-    "refute": ["…"],              // p.refute, the first 8 moves
-    "idea": "fork",               // motif names from findTactics, or null
+    "line": ["d2d4", "…"],        // the line that the advice explains (the solver's line or p.pv), max 12 moves;
+                                  // with no advice on screen, p.pv
+    "refute": ["…"],              // p.refute, max 12 moves
+    "idea": "fork",               // motif names from findTactics, or null; only with advice
     "allowed": "pin",
-    "note": "The idea: Nxe5 forks the king and the rook."   // the exact text the user judged
+    "note": "The idea: Nxe5 forks the king and the rook."   // the exact text the user judged; only with advice
   },
   "hp": ""                        // honeypot field; humans leave it empty
 }
 ```
 
 We do **not** send the PGN. It holds player names, dates and events. The puzzle FEN and the lines are enough to replay the advice.
+
+Why `line` and not `best` (a change from the first plan): when the solver finds another good move, the advice explains the solver's line, not `p.pv`. To replay the advice we need `findTactics(fen, line)` with the line that was really used. 12 moves, not 8, so that a full mate-in-5 line fits.
 
 ## The Worker
 
@@ -112,6 +116,8 @@ feedback/
   wrangler.toml        # name, D1 binding, rate-limit binding, allowed origins
   schema.sql           # the table
   src/worker.js        # fetch handler + validate()
+  read.mjs             # the queries for npm run feedback
+  package.json         # Wrangler, pinned; separate, so that the root npm ci in CI does not install it
   README.md            # deploy and read steps
 ```
 
@@ -136,9 +142,9 @@ The handler, in order:
 
 1. `OPTIONS` → 204 with CORS headers. `POST /feedback` only. Any other request → 404.
 2. `Origin` must be in the allow list: `https://jjshanks.github.io` and `http://127.0.0.1:8000`. Else 403. (This stops other sites, not scripts. The next steps stop scripts.)
-3. Body max 8 KB. Else 413.
+3. Body max 8 KB. Else 413. The Worker checks `Content-Length` first, then reads the body as a stream and stops at 8 KB, so a false `Content-Length` cannot make it keep a large body.
 4. Rate limit: 10 sends a minute for each IP, with the Workers rate-limiting binding (`ratelimits` in `wrangler.toml`, period 60 s, Wrangler 4.36 or later). Else 429. The IP is used only for this check and is never stored. The binding counts for each Cloudflare location, not globally, so it is a loose filter, not a hard limit. That is enough for feedback.
-5. `validate(body)`: known fields only, right types, `text` max 1000 characters, FEN max 100 characters, each line max 8 moves in UCI form. A full `hp` field → reply 200 and store nothing.
+5. `validate(body)`: known fields only, right types, `text` max 1000 characters, FEN max 100 characters, each line max 12 moves in UCI form. No control characters (but newline and tab) in `text`, `note` and `app`, because `npm run feedback` prints them in a terminal. A full `hp` field → reply 200 and store nothing.
 6. Insert one row with a prepared statement. Reply `{"ok":true}`.
 
 If spam comes in spite of this, add Cloudflare **Turnstile** (free) to the free-text dialog only, not to the thumbs. Do not add it before we need it: it loads a third-party script and can show a challenge.
@@ -151,15 +157,7 @@ Add an npm script:
 npm run feedback            # last 50 messages, and votes by motif
 ```
 
-It runs `wrangler d1 execute blunder-feedback --remote --command "…"`. Example query, the advice score for each motif:
-
-```sql
-SELECT json_extract(puzzle, '$.idea') AS motif,
-       SUM(vote = 1) AS up, SUM(vote = -1) AS down
-FROM (SELECT * FROM feedback WHERE kind = 'vote'
-      GROUP BY page, json_extract(puzzle, '$.fen') HAVING id = MAX(id))
-GROUP BY motif ORDER BY down DESC;
-```
+It runs `feedback/read.mjs`, which runs `wrangler d1 execute blunder-feedback --remote --command "…"` for each query. The advice score counts one vote for each page load, puzzle and note (the last row wins), and groups by the pair of motifs: what the game move allowed, and the idea of the better line. One note can tell both, so a thumbs-down cannot say which part was wrong. The queries are in `read.mjs`, and `tests/feedback-worker.spec.js` checks them against the real schema.
 
 The Cloudflare dashboard also has a D1 console, so you can read the data from a phone.
 
@@ -200,8 +198,9 @@ Before each commit in `feedback/`, run `git diff --cached` and check for tokens,
 
 ## Tests
 
-- **Page (`tests/app.spec.js` or a new `tests/feedback.spec.js`):** use `page.route()` to catch `FEEDBACK_URL`. Check the payload shape, the pressed state of the thumbs, the "Thanks" and "Could not send" states, and that the UI is hidden when `FEEDBACK_URL` is empty. CI never calls the real Worker.
-- **Worker:** `validate()` is a pure function. Test it with the Playwright test runner in Node (no browser), with good input, each bad field, a long text and a full honeypot. The handler test with a local D1 (`wrangler dev` / Miniflare) is optional for v1.
+- **Page (`tests/feedback.spec.js`):** the tests put a test `FEEDBACK_URL` in the served page and use `page.route()` to catch the sends. They check the payload shape, the pressed state of the thumbs, the "Thanks" and "Could not send" states, and that the UI is hidden when `FEEDBACK_URL` is empty. CI never calls the real Worker. The thumbs test needs the real engine (one analysis of the sample game).
+- **Worker (`tests/feedback-worker.spec.js`):** in Node with the Playwright test runner (no browser). `validate()` with good input, each bad field, the longest good values and a full honeypot. The handler with a D1 stand-in on `node:sqlite` and the real `schema.sql`: CORS, origin, size (also a streamed body with no `Content-Length`), rate, bad JSON, a failed insert, and the read queries.
+- **By hand, once:** `wrangler dev` with a local D1 and `curl`: a vote and a message are stored, the preflight gets 204, the 11th send in a minute gets 429.
 
 ## Steps
 
@@ -212,11 +211,18 @@ Before each commit in `feedback/`, run `git diff --cached` and check for tokens,
 
 Each step is one commit. Steps 2 and 3 do nothing until step 1 is live, because the UI hides when the URL is empty.
 
-## Open questions
+Done (2026-11-02): the code and the tests for all four steps. To do, by you:
 
-1. **Repo visibility.** The repo is private now, and free GitHub Pages needs it public. The allowed origin `https://jjshanks.github.io` works only after it is published. Until then, the feedback works only from `npm start` on `127.0.0.1:8000`.
-2. **Where to put thumbs.** This plan puts thumbs only on the tactic advice, because that is the part that can be wrong. Do you also want thumbs on the puzzle itself ("Was this a good puzzle?")? That asks a different question and needs a second field (`target: "advice" | "puzzle"`).
-3. **Reply to users?** This plan has no email field, so we cannot reply. An optional email field is easy to add, but then the data holds personal information and the privacy text must change.
+1. `cd feedback && npm ci && npx wrangler login`.
+2. `npx wrangler d1 create blunder-feedback`, and put the `database_id` in `wrangler.toml`.
+3. `npm run schema`, then `npm run deploy`. Check with the `curl` command in `feedback/README.md`.
+4. Set `FEEDBACK_URL` in `index.html` to the Worker URL with `/feedback` at the end. Commit. The deploy to Pages then shows the UI.
+
+## Decisions on the open questions (2026-11-02)
+
+1. **Repo visibility.** Closed: the repo is public, and Pages serves `https://jjshanks.github.io/blunder_drills/`. The allowed origin `https://jjshanks.github.io` is correct (an origin has no path).
+2. **Where to put thumbs.** On the tactic advice only. The free-text dialog takes comments about the puzzle.
+3. **Reply to users?** No email field. The data holds no personal information.
 
 ## Sources
 

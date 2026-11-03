@@ -41,6 +41,10 @@ npm test
   detection and the tactics checker. It blocks the engine download.
 - `tests/app.spec.js` drives the page with the real engine. It needs network
   access to unpkg and jsDelivr.
+- `tests/feedback.spec.js` tests the feedback dialog and the thumbs. It catches
+  the sends, so it never calls the real Worker.
+- `tests/feedback-worker.spec.js` tests the feedback Worker in Node, with an
+  in-memory SQLite database.
 
 The page exposes its pure functions on `window.BlunderDrills` for these tests.
 
@@ -56,6 +60,32 @@ experiments are not on the site.
 
 One-time setup: in the repository settings, under Pages, set Source to
 **GitHub Actions**.
+
+The deploy job also writes the short commit SHA into `APP_VERSION` in the
+published page, so that each feedback row tells which code gave the advice.
+
+## Feedback and privacy
+
+People can send feedback from the page: thumbs up or down on the explanation
+after a puzzle, and free text from the **Feedback** link. A small Cloudflare
+Worker stores each send in a Cloudflare D1 database. Its code is in `feedback/`;
+`feedback/README.md` tells how to deploy it and read the data.
+
+What is stored: the message or the vote, the puzzle position, its engine lines,
+the explanation that was judged, the app version, a random ID for the page
+load, and the time. What is not stored: the PGN, the player names, your name,
+email or IP address. The page sets no cookie and keeps no ID in the browser.
+Cloudflare hosts the data.
+
+The feedback UI shows only when `FEEDBACK_URL` in `index.html` is set. A local
+copy or a fork with no URL shows no feedback UI and sends nothing.
+
+To read the feedback (it needs `npx wrangler login` in `feedback/` first):
+
+```sh
+npm --prefix feedback ci   # once
+npm run feedback           # the last 50 rows, and the thumbs score for each pair of motifs
+```
 
 ## License
 

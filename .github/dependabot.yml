@@ -12,7 +12,7 @@ updates:
         patterns: ['*']
 
   - package-ecosystem: npm
-    directory: /
+    directories: [/, /feedback] # /feedback: Wrangler, for the feedback Worker
     schedule:
       interval: weekly
     cooldown:

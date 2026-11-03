@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node tests/serve.mjs",
     "lint": "eslint .",
-    "test": "playwright test"
+    "test": "playwright test",
+    "feedback": "npm --prefix feedback run read"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
