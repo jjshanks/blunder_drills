@@ -1,6 +1,6 @@
 # Blunder Drills: In-Page Feedback Plan
 
-Written 2026-11-01. Status (2026-11-02): built, with tests. It waits for the first Worker deploy and for `FEEDBACK_URL` (see "Steps"). Where the code differs from the first plan, this file now says what the code does.
+Written 2026-11-01. Status (2026-11-02): built, with tests. The Worker is deployed at `https://blunder-feedback.jjshanks.workers.dev/feedback`, and `FEEDBACK_URL` points to it. Where the code differs from the first plan, this file now says what the code does.
 
 **Decision (2026-11-01):** use a Cloudflare Worker and D1. The other options are kept below as a record of why.
 

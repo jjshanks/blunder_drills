@@ -1443,7 +1443,7 @@ $('#copyAll').onclick = async () => {
 // Messages go to the feedback Worker (feedback/ in the repository, docs/feedback-plan.md). Only what the user
 // sends goes out: the text, and the puzzle position with its lines. Never the PGN or the player names.
 // With no FEEDBACK_URL (a local copy or a fork), the page shows no feedback UI.
-const FEEDBACK_URL = '';
+const FEEDBACK_URL = 'https://blunder-feedback.jjshanks.workers.dev/feedback';
 const APP_VERSION = 'dev'; // the deploy job in .github/workflows/ci.yml puts the commit here
 const PAGE_ID = [...crypto.getRandomValues(new Uint8Array(6))].map(b => b.toString(16).padStart(2, '0')).join(''); // this page load only; not stored
 const TEXT_MAX = 1000;
