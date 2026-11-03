@@ -73,6 +73,10 @@ jobs:
         with:
           persist-credentials: false
       - run: mkdir _site && cp index.html _site/
+      # Feedback rows carry the app version, so that we know which code gave the advice. The step fails if the line is gone.
+      - run: |
+          sed -i "s/^const APP_VERSION = 'dev';/const APP_VERSION = '${GITHUB_SHA::7}';/" _site/index.html
+          grep -q "^const APP_VERSION = '${GITHUB_SHA::7}';" _site/index.html
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: _site

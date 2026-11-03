@@ -245,6 +245,24 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .stepper .btn { min-width: 40px; justify-content: center; font-size: 17px; line-height: 1; padding: 7px 10px }
 .stepauto { margin-left: auto; padding-bottom: 0 }
 .note { font-size: 13px; color: var(--muted); margin: 0; text-wrap: pretty }
+
+/* Feedback: a link in the header that opens a dialog. All of it stays hidden when FEEDBACK_URL is empty. */
+.hside { display: flex; align-items: center; gap: 8px 18px; flex-wrap: wrap }
+.hlink { border: 0; background: none; padding: 2px 0; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--accent) }
+.hlink:hover { text-decoration: underline }
+.ftext { width: 100%; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 8px 10px; line-height: 1.45; resize: vertical }
+.fdlg { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); padding: 20px; width: min(520px, calc(100vw - 32px)); box-shadow: 0 16px 40px -16px rgba(0, 0, 0, .45) }
+.fdlg::backdrop { background: rgba(21, 20, 19, .45) }
+.fdlg h2 { font-family: var(--f-display); font-weight: 600; font-size: 20px; margin: 0; letter-spacing: -.005em }
+.fform { display: grid; gap: 10px }
+.fform > label { font-size: 14px; color: var(--muted) }
+.fform .check { padding-bottom: 0 }
+.fcount { justify-self: end; margin-top: -6px }
+.fbtns { justify-content: flex-end }
+.fstatus { margin: 0; font-size: 14px }
+.fstatus:empty { display: none }
+.fstatus.bad { color: var(--bad) }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0 } /* the honeypot: a bot fills it, a person does not see it */
 </style>
 </head>
 <body>
@@ -256,7 +274,10 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
         <h1>Blunder Drills</h1>
         <p class="tag">Paste a game. Get back the moves you’d rather forget, as puzzles.</p>
       </div>
-      <div class="engine" id="engine"><i></i><span id="engineText">Loading Stockfish 18…</span></div>
+      <div class="hside">
+        <div class="engine" id="engine"><i></i><span id="engineText">Loading Stockfish 18…</span></div>
+        <button class="hlink" id="bFeedback" type="button" aria-haspopup="dialog" hidden>Feedback</button>
+      </div>
     </header>
 
     <section class="panel in" aria-labelledby="h-in">
@@ -334,8 +355,21 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       <ul class="plist" id="plist"></ul>
     </section>
   </div>
-  <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, BSD 3-Clause License. Visits are counted with <a href="https://www.goatcounter.com">GoatCounter</a> (no cookies; your games are not sent).</p>
+  <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, BSD 3-Clause License. Visits are counted with <a href="https://www.goatcounter.com">GoatCounter</a> (no cookies; your games are not sent).<span id="fbPrivacy" hidden> Feedback that you send is stored by Cloudflare: your message or vote, the puzzle position and the time. Not your name, email or IP address.</span></p>
 </div>
+<dialog class="fdlg" id="fbDlg" aria-labelledby="fbDlgH">
+  <form class="fform" id="fbForm">
+    <h2 id="fbDlgH">Send feedback</h2>
+    <label for="fbText">A bug, an idea, an explanation that is wrong: tell us.</label>
+    <textarea class="ftext" id="fbText" rows="6" maxlength="1000" required></textarea>
+    <span class="ptext fcount" id="fbCount">0 / 1000</span>
+    <label class="check" id="fbPosRow"><input type="checkbox" id="fbPos" checked> Include this puzzle position</label>
+    <input class="hp" id="fbHp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <p class="note">We store your message, the puzzle position (if you include it) and the time. Not your name, email or IP address.</p>
+    <p class="fstatus" id="fbStatus" role="status"></p>
+    <div class="row fbtns"><button class="btn" id="fbCancel" type="button">Cancel</button><button class="btn primary" id="fbSend" type="submit">Send</button></div>
+  </form>
+</dialog>
 
 <script type="module">
 import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js';
@@ -1106,7 +1140,7 @@ $('#lFwd').onclick = () => step(T.line.i + 1);
 $('#lEnd').onclick = () => step(T.line.moves.length);
 $('#autoplay').onchange = () => { if (!T.line) return; if (autoplayOn()) autoplay(); else T.token++ };
 document.addEventListener('keydown', e => {
-  if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest('textarea, select, input:not([type=checkbox])')) return;
+  if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest('textarea, select, input:not([type=checkbox]), dialog')) return;
   const key = { h: '#bHint', s: '#bSol', r: '#bRetry', p: '#bPrev', n: '#bNext' }[e.key.toLowerCase()]; // see aria-keyshortcuts
   if (key) { const b = $(key); if (!b.disabled && !b.hidden) { e.preventDefault(); b.click() } return }
   const L = T.line; if (!L) return;
@@ -1379,6 +1413,46 @@ $('#copyAll').onclick = async () => {
   const ok = await copyText(text, $('#copyAll'), 'Copied PGN'); $('#copyNote').hidden = !ok;
   if (!ok) { $('#copyOut').value = text; $('#copyBox').hidden = false; $('#copyOut').select() }
 };
+
+/* ---------------- feedback ---------------- */
+// Messages go to the feedback Worker (feedback/ in the repository, docs/feedback-plan.md). Only what the user
+// sends goes out: the text, and the puzzle position with its lines. Never the PGN or the player names.
+// With no FEEDBACK_URL (a local copy or a fork), the page shows no feedback UI.
+const FEEDBACK_URL = '';
+const APP_VERSION = 'dev'; // the deploy job in .github/workflows/ci.yml puts the commit here
+const PAGE_ID = [...crypto.getRandomValues(new Uint8Array(6))].map(b => b.toString(16).padStart(2, '0')).join(''); // this page load only; not stored
+const TEXT_MAX = 1000;
+async function sendFeedback(body) {
+  const r = await fetch(FEEDBACK_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, // text/plain: no CORS preflight
+    body: JSON.stringify({ v: 1, page: PAGE_ID, app: APP_VERSION, hp: '', ...body }), signal: AbortSignal.timeout(10_000) });
+  if (!r.ok) throw new Error('feedback: HTTP ' + r.status);
+}
+// The puzzle on the board, for a message: the position, the game move, the engine line and its refutation.
+const puzzleInfo = p => ({ fen: p.fen, type: p.type, played: p.played.uci, line: (p.pv || []).slice(0, 12), refute: (p.refute || []).slice(0, 12) });
+
+function openFeedback() {
+  $('#fbPosRow').hidden = !T.p; $('#fbPos').checked = true;
+  $('#fbStatus').textContent = ''; $('#fbSend').hidden = false; $('#fbCancel').textContent = 'Cancel';
+  $('#fbDlg').showModal();
+}
+const fbCount = () => { $('#fbCount').textContent = `${$('#fbText').value.length} / ${TEXT_MAX}` };
+$('#fbText').addEventListener('input', fbCount);
+$('#fbCancel').onclick = () => $('#fbDlg').close();
+$('#fbForm').onsubmit = async e => {
+  e.preventDefault();
+  const text = $('#fbText').value.trim(), send = $('#fbSend'), status = $('#fbStatus');
+  if (!text) return;
+  send.disabled = true; send.textContent = 'Sending…'; status.textContent = ''; status.className = 'fstatus';
+  try {
+    await sendFeedback({ kind: 'text', text, hp: $('#fbHp').value, ...(T.p && $('#fbPos').checked && { puzzle: puzzleInfo(T.p) }) });
+    $('#fbText').value = ''; fbCount();
+    status.textContent = 'Thanks. We read every message.'; send.hidden = true; $('#fbCancel').textContent = 'Close';
+  } catch {
+    status.textContent = 'Could not send. Try again later.'; status.className = 'fstatus bad'; // the text stays in the box
+  } finally { send.disabled = false; send.textContent = 'Send' }
+};
+$('#bFeedback').onclick = openFeedback;
+if (FEEDBACK_URL) $('#bFeedback').hidden = $('#fbPrivacy').hidden = false;
 
 /* ---------------- wiring ---------------- */
 $('#paste').onclick = pasteGame;
