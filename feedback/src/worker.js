@@ -15,6 +15,7 @@ const PUZZLE_FIELDS = ['fen', 'type', 'played', 'line', 'refute', 'idea', 'allow
 
 // Control characters, but not tab and newline. `npm run feedback` prints the text in a terminal, where escape
 // codes could change what the terminal shows.
+// eslint-disable-next-line no-control-regex -- matching control characters is the point of this regex
 const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/;
 const isObject = x => typeof x === 'object' && x !== null && !Array.isArray(x);
 const isText = (x, max) => typeof x === 'string' && x.length <= max && !CONTROL.test(x);
