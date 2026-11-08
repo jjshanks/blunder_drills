@@ -106,6 +106,7 @@ IndexedDB has a much larger limit, but it is async and needs more code. All stor
   - Saved puzzles: by ID. A new one is added; yours wins. A puzzle whose position (FEN) chess.js cannot read is skipped.
   - Stats: for each ID, the record with more tries wins.
 - A file that is not a backup gives an error, and nothing changes.
+- The file is not trusted: it can come from a different person. Import rebuilds each record from the fields that the page uses, and checks their types and values (moves and squares by pattern, the puzzle type, the status and the box from fixed sets). A record that fails is skipped. An engine result that fails becomes a gap, which the next analysis fills. The page shows imported text only with `textContent`, never with `innerHTML`.
 
 ## Tests
 

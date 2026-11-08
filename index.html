@@ -887,15 +887,45 @@ function exportData() {
   track('backup-exported');
   backupMsg(`Exported ${games.length} game${games.length === 1 ? '' : 's'} and ${n} saved puzzle${n === 1 ? '' : 's'}.`);
 }
+// An imported file is not trusted: each saved puzzle, stats record and engine result is rebuilt from the fields that
+// the page uses, with their types checked, or it is skipped.
+const UCI = /^[a-h][1-8][a-h][1-8][qrbn]?$/, SQ = /^[a-h][1-8]$/, int = (x, lo = 0) => Number.isInteger(x) && x >= lo;
+const cleanScore = s => !s || typeof s !== 'object' ? null : int(s.mate, -999) ? { mate: s.mate, ...(s.won === true && { won: true }), ...(s.lost === true && { lost: true }) } : Number.isFinite(s.cp) ? { cp: s.cp } : null;
+const cleanLine = l => Array.isArray(l) && l.every(u => UCI.test(u)) ? [...l] : null;
+const cleanMove = m => m && typeof m === 'object' && SQ.test(m.from) && SQ.test(m.to) && UCI.test(m.uci) && typeof m.san === 'string' && (m.color === 'w' || m.color === 'b') && int(m.moveNo, 1)
+  ? { san: m.san.slice(0, 12), from: m.from, to: m.to, uci: m.uci, color: m.color, moveNo: m.moveNo } : null;
+function cleanEval(e) {
+  const score = cleanScore(e && e.score), pv = cleanLine(e && e.pv);
+  return score && pv && (e.best === null || UCI.test(e.best)) ? { score, pv, best: e.best, ...(int(e.depth) && { depth: e.depth }) } : null;
+}
+function cleanSaved(e) {
+  const p = e && e.p, g = e && e.g;
+  if (!p || !g || typeof g !== 'object' || !['mate', 'blunder', 'mistake'].includes(p.type) || (p.color !== 'w' && p.color !== 'b') || !int(p.ply) || typeof p.fen !== 'string') return null;
+  const c = { ply: p.ply, color: p.color, fen: p.fen, best: p.best, pv: cleanLine(p.pv), refute: cleanLine(p.refute), before: cleanScore(p.before), after: cleanScore(p.after),
+    played: cleanMove(p.played), prev: p.prev == null ? null : cleanMove(p.prev), type: p.type, depth: int(p.depth, 1) ? p.depth : 10 };
+  if (!UCI.test(c.best) || !c.pv || !c.refute || !c.before || !c.after || !c.played || (p.prev != null && !c.prev)) return null;
+  if (p.type === 'mate') { if (!int(p.mateN, 1)) return null; c.mateN = p.mateN } else if (Number.isFinite(p.drop)) c.drop = p.drop;
+  try { new Chess(c.fen) } catch { return null } // a position that chess.js cannot read
+  const str = x => String(x == null ? '' : x).slice(0, 200);
+  return { p: c, g: { k: str(g.k), w: str(g.w) || 'White', b: str(g.b) || 'Black', date: str(g.date) }, at: Number.isFinite(e.at) ? e.at : Date.now() };
+}
+function cleanStat(st) {
+  if (!st || typeof st !== 'object' || !int(st.tries)) return null;
+  const n = k => int(st[k]) ? st[k] : 0;
+  return { box: int(st.box) && st.box <= 4 ? st.box : 0, tries: st.tries, clean: n('clean'), helped: n('helped'), revealed: n('revealed'),
+    ...(['clean', 'helped', 'revealed'].includes(st.last) && { last: st.last }), ...(Number.isFinite(st.lastAt) && { lastAt: st.lastAt }) };
+}
 function importData(text) {
   let d; try { d = JSON.parse(text) } catch { d = null }
   if (!d || d.app !== 'blunder-drills' || d.v !== 1) throw new Error('That file is not a Blunder Drills backup.');
   const index = new Map(Lib.index().map(e => [e.k, e])), out = { games: 0, puzzles: 0 };
   for (const e of Array.isArray(d.games) ? d.games : []) {
     const r = e && e.rec;
-    if (!e || typeof e.k !== 'string' || !r || typeof r.src !== 'string') continue;
-    const mine = Lib.get(e.k), progress = r.progress && typeof r.progress === 'object' ? r.progress : {};
-    let rec = { src: r.src, depth: r.depth || 0, done: !!r.done, evals: Array.isArray(r.evals) ? r.evals : null, progress };
+    if (!e || !/^[0-9a-z]{1,7}$/.test(e.k) || !r || typeof r.src !== 'string') continue;
+    const mine = Lib.get(e.k), progress = Object.fromEntries(Object.entries(r.progress && typeof r.progress === 'object' ? r.progress : {})
+      .filter(([key, v]) => /^\d+(mate|blunder|mistake)$/.test(key) && ['solved', 'retry', 'revealed'].includes(v)));
+    const evals = Array.isArray(r.evals) ? r.evals.map(cleanEval) : null, done = !!r.done && !!evals && evals.every(Boolean);
+    let rec = { src: r.src, depth: int(r.depth) ? r.depth : 0, done, evals, progress };
     if (mine) {
       const theirs = rec.done && rec.evals && !(mine.done && mine.evals && mine.depth >= rec.depth); // complete and deeper
       rec = { ...mine, ...(theirs && { depth: rec.depth, done: true, evals: rec.evals }), progress: { ...progress, ...mine.progress } };
@@ -907,11 +937,13 @@ function importData(text) {
   }
   Lib.setIndex([...index.values()].sort((a, b) => b.at - a.at));
   for (const [id, e] of Object.entries(d.saved && typeof d.saved === 'object' ? d.saved : {})) {
-    if (Saved.list[id] || !e || !e.p || !e.g) continue;
-    try { new Chess(e.p.fen) } catch { continue } // a position that chess.js cannot read
-    Saved.list[id] = e; out.puzzles++;
+    const c = !Saved.list[id] && cleanSaved(e);
+    if (c) { Saved.list[id] = c; out.puzzles++ }
   }
-  for (const [id, st] of Object.entries(d.train && typeof d.train === 'object' ? d.train : {})) if (st && (st.tries || 0) > ((Saved.stats[id] || {}).tries || 0)) Saved.stats[id] = st;
+  for (const [id, raw] of Object.entries(d.train && typeof d.train === 'object' ? d.train : {})) {
+    const st = cleanStat(raw);
+    if (st && st.tries > ((Saved.stats[id] || {}).tries || 0)) Saved.stats[id] = st;
+  }
   Saved.write(); Saved.writeStats();
   renderGames(); renderList(); renderSave(); renderTrain();
   track('backup-imported');
@@ -1003,7 +1035,11 @@ const TYPE_LABEL = p => p.type === 'mate' ? `Mate in ${p.mateN}` : p.type === 'b
 function kindEl(p) {
   const s = document.createElement('span'); s.className = 'kind ' + p.type;
   if (p.type === 'mate') s.textContent = `Missed mate in ${p.mateN}`;
-  else s.innerHTML = `<span aria-hidden="true">${p.type === 'blunder' ? '??' : '?'}</span><span class="vh"> (${p.type})</span>`;
+  else { // text only: a saved puzzle can come from an imported file
+    const mark = document.createElement('span'), vh = document.createElement('span');
+    mark.setAttribute('aria-hidden', 'true'); mark.textContent = p.type === 'blunder' ? '??' : '?';
+    vh.className = 'vh'; vh.textContent = ` (${p.type})`; s.append(mark, vh);
+  }
   return s;
 }
 function renderWho() {
@@ -1855,7 +1891,7 @@ analyze(startSrc());
 store.del('drills.src'); // the last game from before the library: analyze() put it in the library
 
 // Read-only hooks for the automated tests in tests/. The app does not use them.
-window.BlunderDrills = Object.freeze({ SAMPLE, cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, findTactics, tacticWords, tacticHint, tacticNotes, studyPgn, gameKey, Lib, Saved, pickNext, state: S, trainer: T, Chess });
+window.BlunderDrills = Object.freeze({ SAMPLE, cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, findTactics, tacticWords, tacticHint, tacticNotes, studyPgn, gameKey, Lib, Saved, pickNext, importData, state: S, trainer: T, Chess });
 </script>
 
 </body>

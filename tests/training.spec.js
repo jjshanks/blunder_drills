@@ -163,3 +163,34 @@ test('exports a backup and imports it into an empty browser', async ({ page }) =
   await page.locator('#importFile').setInputFiles(file); // a second import adds nothing
   await expect(page.locator('#backupMsg')).toHaveText('Imported 0 new games and 0 new saved puzzles.');
 });
+
+test('an import does not trust the file: bad puzzles, statuses and stats are dropped, and no script runs', async ({ page }) => {
+  const k = await seedGame(page), id = k + ':5';
+  await page.locator('#plist .star').click();
+  const good = (await ls(page, 'drills.saved'))[id];
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  const xss = '<img src=x onerror="window.pwned=1">';
+  const file = {
+    app: 'blunder-drills', v: 1,
+    games: [
+      { k, w: xss, b: 'Bob', rec: { src: GAME, depth: 14, done: true, evals: [{ score: { cp: xss }, pv: [], best: null }], progress: { '5blunder': xss, '6mate': 'solved' } } },
+      { k: '../drills.saved', w: 'A', b: 'B', rec: { src: GAME } },
+    ],
+    saved: { [id]: good, bad1: { ...good, p: { ...good.p, type: xss } }, bad2: { ...good, p: { ...good.p, played: { ...good.p.played, from: xss } } } },
+    train: { [id]: { box: 99, tries: 2, clean: xss, helped: 1, revealed: 0, last: xss } },
+  };
+  await page.locator('#importFile').setInputFiles({ name: 'b.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
+  await expect(page.locator('#backupMsg')).toHaveText('Imported 1 new game and 1 new saved puzzle.');
+  expect(Object.keys(await ls(page, 'drills.saved'))).toEqual([id]);
+  expect((await ls(page, 'drills.train'))[id]).toEqual({ box: 0, tries: 2, clean: 0, helped: 1, revealed: 0 });
+  const rec = await ls(page, 'drills.g.' + k);
+  expect(rec).toMatchObject({ done: false, evals: [null], progress: { '6mate': 'solved' } });
+  expect(rec.progress['5blunder']).toBeUndefined();
+  await page.locator('#bGames').click();
+  await expect(page.locator('#glist .gopen')).toContainText(`${xss} vs Bob`); // text, not markup
+  await page.locator('#bGames').click();
+  await page.locator('#bTrain').click();
+  await expect(page.locator('#ctx')).toContainText('Ann vs Bob: 3… Nf6');
+  expect(await page.evaluate(() => window.pwned)).toBeUndefined();
+});
