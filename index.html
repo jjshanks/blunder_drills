@@ -717,6 +717,7 @@ function renderGames() {
     };
     del.textContent = '×'; del.title = 'Delete this game'; del.setAttribute('aria-label', `Delete ${e.w} vs ${e.b}`);
     del.onclick = () => {
+      if (!confirm(`Delete ${e.w} vs ${e.b}? Its engine results and puzzle progress go too.`)) return;
       Lib.remove(e.k);
       if (e.k === S.key) { S.key = null; analyze(startSrc()) } else renderGames(); // the game on the board: open the next one
       if (Lib.index().length) btn.focus();

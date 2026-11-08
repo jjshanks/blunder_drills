@@ -103,6 +103,12 @@ test('Your games lists the pasted games, most recent first; a click opens one, �
   await page.reload(); // the game opened last opens with the page
   await expect(page.locator('#gsum')).toHaveText('Ann vs Bob · 1-0 · 4 moves');
   await btn.click();
+  const asked = [];
+  page.once('dialog', d => { asked.push(d.message()); d.dismiss() }); // Cancel keeps the game
+  await page.getByRole('button', { name: 'Delete Cy vs Di' }).click();
+  await expect(rows).toHaveCount(2);
+  expect(asked).toEqual(['Delete Cy vs Di? Its engine results and puzzle progress go too.']);
+  page.on('dialog', d => d.accept());
   await page.getByRole('button', { name: 'Delete Cy vs Di' }).click(); // not the game on the board
   await expect(rows).toHaveText(['Ann vs Bob · 1-0 · 2026.11.01 · 4 moves']);
   await expect(page.locator('#gsum')).toHaveText('Ann vs Bob · 1-0 · 4 moves');

@@ -57,8 +57,8 @@ IndexedDB has a much larger limit, but it is async and needs more code. All stor
 
 - **Open a game.** If the record has engine results that are complete, at the chosen depth or deeper, the page shows them at once. It does not wait for the engine. If the analysis stopped before the end at the same depth, the page analyzes only the positions that are missing. In all other cases, it analyzes the game again.
 - **Save.** The page writes the engine results every 10 positions and at the end. A reload during the analysis then loses at most 10 positions.
-- **A new depth.** When you change the depth, the page analyzes the game again at that depth, unless the cached results are at that depth or deeper.
-- **"Your games".** A button in the game panel opens the list of games, the most recent first. A click opens a game. A × button deletes it. If you delete the game on the board, the next game in the list opens (or the sample).
+- **A new depth.** When you change the depth, the page analyzes the game again at that depth, unless the cached results are at that depth or deeper. Deeper results always win (decision 2026-11-07): you cannot go back to a smaller depth for a game.
+- **"Your games".** A button in the game panel opens the list of games, the most recent first. A click opens a game. A × button deletes it, after a confirmation (the browser's `confirm` dialog). If you delete the game on the board, the next game in the list opens (or the sample).
 - **Start.** The page opens the game that you opened last, or the sample when the library is empty.
 - **Full storage.** See "Why localStorage". If storage is still full after the removal, the page shows an error.
 - **GoatCounter.** One new event, `game-reopened`, when you open a game from the list. No game data.
