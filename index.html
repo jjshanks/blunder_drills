@@ -125,6 +125,16 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .gsum span { color: var(--muted); font-weight: 400 }
 .gpaste { border: 0; background: none; padding: 2px 0; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--accent); white-space: nowrap }
 .gpaste:hover { text-decoration: underline }
+.gacts { display: flex; gap: 4px 18px; flex-wrap: wrap }
+/* Your games: rows like the puzzle list. The list scrolls when it is long. */
+.glist { list-style: none; margin: 6px 0 4px; padding: 0; border-top: 1px solid var(--line); max-height: 320px; overflow-y: auto }
+.glist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--line) }
+.gopen { border: 0; background: transparent; text-align: left; padding: 8px 12px; cursor: pointer; overflow-wrap: anywhere }
+.gopen:hover, .gopen[aria-current="true"] { background: var(--surface) }
+.gopen[aria-current="true"] { box-shadow: inset 3px 0 0 var(--ink) } /* the game on the board */
+.gopen span { color: var(--muted) }
+.gdel { border: 0; background: transparent; color: var(--muted); padding: 8px 12px; cursor: pointer; font-size: 16px; line-height: 1 }
+.gdel:hover { color: var(--bad) }
 .filters { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center }
 .filters .field { display: flex; align-items: center; gap: 8px; font-size: 14px }
 .filters .check { padding-bottom: 0 }
@@ -293,8 +303,12 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       <h2 id="h-in" class="vh">Game</h2>
       <div class="gbar">
         <p class="gsum" id="gsum" hidden></p>
-        <button class="gpaste" id="paste" type="button" title="Analyze the game (PGN) that you copied">Paste game</button>
+        <div class="gacts">
+          <button class="gpaste" id="bGames" type="button" aria-expanded="false" aria-controls="glist" hidden>Your games</button>
+          <button class="gpaste" id="paste" type="button" title="Analyze the game (PGN) that you copied">Paste game</button>
+        </div>
       </div>
+      <ul class="glist" id="glist" aria-label="Your games" hidden></ul>
       <p class="note" id="sampleHint" hidden>This is a sample game. To drill your own, open one of your games on Lichess or Chess.com, copy its PGN (look under Share or Export), then click <b>Paste game</b>.</p>
       <p class="err" id="err" hidden></p>
       <div class="progress" id="prog" hidden>
@@ -378,7 +392,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       <ul class="plist" id="plist"></ul>
     </section>
   </div>
-  <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, BSD 3-Clause License. Visits are counted with <a href="https://www.goatcounter.com">GoatCounter</a> (no cookies; your games are not sent).<span id="fbPrivacy" hidden> Feedback that you send is stored by Cloudflare: your message or vote, the puzzle position and the time. Not your name, email or IP address.</span></p>
+  <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, BSD 3-Clause License. Visits are counted with <a href="https://www.goatcounter.com">GoatCounter</a> (no cookies; your games are not sent). Your games and progress stay in this browser.<span id="fbPrivacy" hidden> Feedback that you send is stored by Cloudflare: your message or vote, the puzzle position and the time. Not your name, email or IP address.</span></p>
 </div>
 <dialog class="fdlg" id="fbDlg" aria-labelledby="fbDlgH">
   <form class="fform" id="fbForm">
@@ -413,7 +427,9 @@ const SAMPLE = `[Event "Club Rapid"]
 
 const store = {
   get(k) { try { return localStorage.getItem(k) } catch { return null } },
-  set(k, v) { try { localStorage.setItem(k, v) } catch { /* storage is blocked or full: the page works, but forgets */ } }
+  // false when storage is blocked or full: the page works, but forgets
+  set(k, v) { try { localStorage.setItem(k, v); return true } catch { return false } },
+  del(k) { try { localStorage.removeItem(k) } catch { /* storage is blocked */ } }
 };
 
 // Count an event in GoatCounter. Only the event name is sent, never a game or a move. An event from before
@@ -576,7 +592,7 @@ const T = { p: null, chess: null, orient: 'w', sel: null, last: null, mode: 'idl
 
 const moveLabel = (m) => m.color === 'w' ? `${m.moveNo}. ${m.san}` : `${m.moveNo}… ${m.san}`;
 const sideName = c => c === 'w' ? 'White' : 'Black';
-function playerName(c) { const h = S.game && S.game.headers || {}; const n = c === 'w' ? h.White : h.Black; return n && n !== '?' ? n : sideName(c) }
+const playerName = c => nameOf(S.game && S.game.headers || {}, c);
 
 /* ---------------- analysis ---------------- */
 // src: the PGN text. If it is not a valid game, show an error and keep the current game.
@@ -586,34 +602,40 @@ async function analyze(src, pasted) {
   let game;
   try { game = parseInput(src) } catch (e) { showErr(e.message); return }
   if (pasted) track('game-pasted');
-  store.set('drills.src', src); S.src = src;
+  S.src = src;
   $('#sampleHint').hidden = src !== SAMPLE; // until the user pastes a game: how to get their own game in
-  const run = ++S.run;
-  const depth = +$('#depth').value;
-  S.game = game; S.evals = new Array(game.positions.length); S.puzzles = []; S.analyzedDepth = depth; S.current = -1; S.done = false;
-  S.key = gameKey(game); S.progress = loadProgress(S.key);
+  const run = ++S.run, n = game.positions.length;
+  // The engine results from storage: complete at the chosen depth or deeper, or stopped before the end at the same depth.
+  const want = +$('#depth').value, rec = openRecord(gameKey(game), src, game);
+  const cache = rec.evals && rec.evals.length === n && (rec.done ? rec.depth >= want : rec.depth === want) ? rec.evals : null;
+  const depth = cache ? rec.depth : want;
+  S.game = game; S.evals = cache ? cache.map(e => e || undefined) : new Array(n); S.puzzles = []; S.analyzedDepth = depth; S.current = -1; S.done = false;
+  S.key = rec.k; S.progress = rec.progress;
   const me = store.get('drills.me'); S.who = me ? ['w', 'b'].find(c => playerName(c) === me) || 'all' : 'all';
   $('#evalNow').textContent = '';
   showGameEnd();
-  renderWho(); renderGameSummary(); refreshPuzzles(); drawChart();
+  renderWho(); renderGameSummary(); renderGames(); refreshPuzzles(); drawChart();
   $('#prog').hidden = false; $('#prog').classList.remove('done'); $('#pmeta').textContent = '';
-  try { await Engine.ready } catch { setProgress(0, 'The engine could not start in this browser.'); return }
-  const n = game.positions.length, t0 = performance.now();
-  for (let k = 0; k < n; k++) {
+  const todo = [...S.evals.keys()].filter(k => !S.evals[k]), t0 = performance.now();
+  if (todo.length) {
+    try { await Engine.ready } catch { setProgress(0, 'The engine could not start in this browser.'); return }
     if (run !== S.run) return;
-    setProgress(k / n, `Analyzing position ${k + 1} of ${n} · depth ${depth}`);
-    const ev = await evalPosition(game.positions[k], depth);
-    if (run !== S.run) return;
-    if (!ev) return setProgress(k / n, `Stopped at position ${k + 1} of ${n}: the engine stopped working.`);
-    S.evals[k] = ev;
-    refreshPuzzles(); drawChart();
+    for (const k of todo) {
+      setProgress(k / n, `Analyzing position ${k + 1} of ${n} · depth ${depth}`);
+      const ev = await evalPosition(game.positions[k], depth);
+      if (run !== S.run) return;
+      if (!ev) { saveGame(); return setProgress(k / n, `Stopped at position ${k + 1} of ${n}: the engine stopped working.`) }
+      S.evals[k] = ev;
+      if (k % 10 === 9) saveGame(); // a reload loses at most 10 positions
+      refreshPuzzles(); drawChart();
+    }
   }
-  const secs = ((performance.now() - t0) / 1000).toFixed(1);
+  S.done = true; saveGame();
   setProgress(1, 'Analysis complete'); $('#prog').classList.add('done');
-  $('#pmeta').textContent = ` · ${n} position${n > 1 ? 's' : ''} at depth ${depth} in ${secs}s`;
+  $('#pmeta').textContent = ` · ${n} position${n > 1 ? 's' : ''} at depth ${depth}` + (todo.length === n ? ` in ${((performance.now() - t0) / 1000).toFixed(1)}s` : todo.length ? ', partly from storage' : ', from storage');
   const last = S.evals[n - 1];
   if (last) { const e = forWhite(last.score, game.positions[n - 1].split(' ')[1]); $('#evalNow').textContent = (isMate(e) && e.mate === 0 ? 'Checkmate · ' : 'End ') + fmt(e) }
-  S.done = true; renderList(); syncBoard();
+  renderList(); syncBoard();
   if (pasted) track('analysis-done');
 }
 // The engine result for a position, as Engine.analyse gives it. A game that is over needs no search.
@@ -624,15 +646,85 @@ function evalPosition(fen, depth, urgent) {
   return Engine.analyse(fen, depth, urgent);
 }
 const showGameEnd = () => { const g = S.game; showPosition(g.positions[g.positions.length - 1], g.moves[g.moves.length - 1]) };
-// Puzzle progress for each game, in localStorage as { 'ply type': status }. The key is a hash of the moves,
-// so the progress stays when the same game is analyzed again, at any depth.
+/* ---------------- library ---------------- */
+// The games that you pasted, in localStorage (see docs/library-plan.md). The key of a game is a hash of the moves,
+// so the same game pasted again opens its record, at any depth.
+//   drills.games  the index, most recent first: [{ k, w, b, date, result, moves, at }]. The sample game is not in it.
+//   drills.g.<k>  one game: { src, depth, done, evals, progress }. evals: the engine result for each position, or
+//                 null when it was removed for space. progress: { 'ply type': status }.
 function gameKey(g) {
   let h = 0x811c9dc5; // FNV-1a
   for (const ch of g.startFen + ' ' + g.moves.map(m => m.uci).join(' ')) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193);
-  return 'drills.game.' + (h >>> 0).toString(36);
+  return (h >>> 0).toString(36);
 }
-function loadProgress(key) { try { return JSON.parse(store.get(key)) || {} } catch { return {} } }
-function saveStatus(p) { S.progress[p.ply + p.type] = p.status; store.set(S.key, JSON.stringify(S.progress)) }
+const Lib = {
+  index() { try { const a = JSON.parse(store.get('drills.games')); return Array.isArray(a) ? a : [] } catch { return [] } },
+  get(k) { try { return JSON.parse(store.get('drills.g.' + k)) } catch { return null } },
+  // Write one value. When storage is full, remove the engine results of the games opened least recently (not of game
+  // keep), until the write works. Say once for each page load that a write failed, as storage can also be blocked.
+  put(key, value, keep) {
+    const text = JSON.stringify(value);
+    if (store.set(key, text)) return true;
+    for (const e of this.index().reverse()) {
+      const r = e.k !== keep && this.get(e.k); if (!r || !r.evals) continue;
+      r.evals = null; r.done = false; store.set('drills.g.' + e.k, JSON.stringify(r));
+      if (store.set(key, text)) return true;
+    }
+    if (!this.warned) { this.warned = true; showErr('The browser did not save this game: its storage is full or blocked. To make space, delete some games under Your games.') }
+    return false;
+  },
+  setIndex(list) { this.put('drills.games', list) },
+  remove(k) { this.setIndex(this.index().filter(e => e.k !== k)); store.del('drills.g.' + k) }
+};
+const nameOf = (h, c) => { const n = c === 'w' ? h.White : h.Black; return n && n !== '?' ? n : sideName(c) };
+// The record of a game, made when it does not exist yet. It takes the progress from before the library (drills.game.<k>).
+// A game that is not the sample goes to the top of the index.
+function openRecord(k, src, g) {
+  const rec = Lib.get(k) || { depth: 0, done: false, evals: null, progress: {} }, legacy = 'drills.game.' + k;
+  const old = store.get(legacy);
+  if (old) try { rec.progress = { ...JSON.parse(old), ...rec.progress } } catch { /* not JSON: drop it */ }
+  rec.src = src; rec.progress = rec.progress || {};
+  if (Lib.put('drills.g.' + k, rec, k)) store.del(legacy);
+  if (src !== SAMPLE) {
+    const h = g.headers, e = { k, w: nameOf(h, 'w'), b: nameOf(h, 'b'), date: /^\d{4}/.test(h.Date || '') ? h.Date.replace(/\.\?\?/g, '') : '', result: h.Result && h.Result !== '*' ? h.Result : '', moves: Math.ceil(g.moves.length / 2), at: Date.now() };
+    Lib.setIndex([e, ...Lib.index().filter(x => x.k !== k)]);
+  }
+  return { ...rec, k };
+}
+function saveGame() { if (S.key) Lib.put('drills.g.' + S.key, { src: S.src, depth: S.analyzedDepth, done: S.done, evals: S.evals, progress: S.progress }, S.key) }
+function saveStatus(p) { S.progress[p.ply + p.type] = p.status; saveGame() }
+// The game to open when the page opens: the one opened last, or the last game from before the library, or the sample.
+function startSrc() {
+  const top = Lib.index()[0], r = top && Lib.get(top.k);
+  return r && r.src || store.get('drills.src') || SAMPLE;
+}
+// The list under Your games. A click opens a game from its record; × deletes it.
+function renderGames() {
+  const list = Lib.index(), btn = $('#bGames'), ul = $('#glist');
+  btn.hidden = !list.length; btn.textContent = `Your games (${list.length})`;
+  if (!list.length) toggleGames(false);
+  ul.replaceChildren(...list.map(e => {
+    const li = document.createElement('li'), open = document.createElement('button'), del = document.createElement('button'), rest = document.createElement('span');
+    open.type = del.type = 'button'; open.className = 'gopen'; del.className = 'gdel';
+    open.textContent = `${e.w} vs ${e.b}`;
+    rest.textContent = [e.result, e.date, `${e.moves} move${e.moves === 1 ? '' : 's'}`].filter(Boolean).map(x => ' · ' + x).join('');
+    open.appendChild(rest);
+    if (e.k === S.key) open.setAttribute('aria-current', 'true');
+    open.onclick = () => {
+      toggleGames(false); btn.focus();
+      const r = e.k !== S.key && Lib.get(e.k);
+      if (r) { track('game-reopened'); analyze(r.src) }
+    };
+    del.textContent = '×'; del.title = 'Delete this game'; del.setAttribute('aria-label', `Delete ${e.w} vs ${e.b}`);
+    del.onclick = () => {
+      Lib.remove(e.k);
+      if (e.k === S.key) { S.key = null; analyze(startSrc()) } else renderGames(); // the game on the board: open the next one
+      if (Lib.index().length) btn.focus();
+    };
+    li.append(open, del); return li;
+  }));
+}
+function toggleGames(open = $('#glist').hidden) { $('#glist').hidden = !open; $('#bGames').setAttribute('aria-expanded', String(open)) }
 // One line for the loaded game, for example "Martin Reyes vs Priya Nair · 1-0 · 44 moves".
 function renderGameSummary() {
   const g = S.game, el = $('#gsum'); el.hidden = !g; if (!g) return;
@@ -1535,6 +1627,7 @@ if (FEEDBACK_URL) $('#bFeedback').hidden = $('#fbPrivacy').hidden = false;
 
 /* ---------------- wiring ---------------- */
 $('#paste').onclick = pasteGame;
+$('#bGames').onclick = () => toggleGames();
 for (const id of ['depth', 'maxMate']) { // settings stay for the next visit
   const el = $('#' + id), v = store.get('drills.' + id);
   if ([...el.options].some(o => o.value === v)) el.value = v;
@@ -1547,10 +1640,11 @@ $('#depth').onchange = () => { if (S.src) analyze(S.src) }; // a new depth analy
 showPosition(START, null);
 drawChart();
 Engine.start().catch(() => { $('#err').textContent = 'Stockfish could not start in this browser. Try a current Chrome, Edge, Firefox or Safari.'; $('#err').hidden = false });
-analyze(store.get('drills.src') || SAMPLE);
+analyze(startSrc());
+store.del('drills.src'); // the last game from before the library: analyze() put it in the library
 
 // Read-only hooks for the automated tests in tests/. The app does not use them.
-window.BlunderDrills = Object.freeze({ SAMPLE, cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, findTactics, tacticWords, tacticHint, tacticNotes, studyPgn, state: S, trainer: T, Chess });
+window.BlunderDrills = Object.freeze({ SAMPLE, cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, findTactics, tacticWords, tacticHint, tacticNotes, studyPgn, gameKey, Lib, state: S, trainer: T, Chess });
 </script>
 
 </body>

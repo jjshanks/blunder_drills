@@ -41,6 +41,9 @@ npm test
   detection and the tactics checker. It blocks the engine download.
 - `tests/app.spec.js` drives the page with the real engine. It needs network
   access to unpkg and jsDelivr.
+- `tests/library.spec.js` tests the game library: games and engine results in
+  localStorage, the move from the old keys, Your games, and full storage. It
+  blocks the engine download.
 - `tests/feedback.spec.js` tests the feedback dialog and the thumbs. It catches
   the sends, so it never calls the real Worker.
 - `tests/feedback-worker.spec.js` tests the feedback Worker in Node, with an
@@ -63,6 +66,15 @@ One-time setup: in the repository settings, under Pages, set Source to
 
 The deploy job also writes the short commit SHA into `APP_VERSION` in the
 published page, so that each feedback row tells which code gave the advice.
+
+## Your games and privacy
+
+The page keeps your games, their engine results and your puzzle progress in
+your browser (localStorage), so that you can open a game again without a new
+paste or analysis. They are not sent anywhere. When the browser storage is
+full, the page removes the engine results of the games that you opened least
+recently first. Safari deletes this data when you do not open the site for 7
+days of Safari use. See `docs/library-plan.md`.
 
 ## Feedback and privacy
 

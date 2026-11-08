@@ -68,6 +68,17 @@ test('analyzes the sample game into the expected puzzles', async ({ page }) => {
   await expect(page.locator('#engine')).toBeHidden(); // a ready engine needs no status
 });
 
+test('a reload opens the analyzed game from storage, with the same puzzles and no new analysis', async ({ page }) => {
+  await openAnalyzed(page);
+  await expect(page.locator('#pmeta')).toHaveText(/^ · 88 positions at depth 14 in /);
+  const size = await page.evaluate(() => { const k = window.BlunderDrills.state.key; return localStorage.getItem('drills.g.' + k).length });
+  console.log(`record of the sample game at depth 14: ${(size / 1024).toFixed(1)} KB`);
+  await page.reload();
+  await expect(page.locator('#ptext')).toHaveText('Analysis complete');
+  await expect(page.locator('#pmeta')).toHaveText(' · 88 positions at depth 14, from storage');
+  await expect(page.locator('.pitem .mv')).toHaveText(SAMPLE_PUZZLES);
+});
+
 test('solves a blunder puzzle on the first try, then steps through the engine line', async ({ page }) => {
   const hits = await catchGoatCounter(page);
   await openAnalyzed(page);
@@ -451,13 +462,13 @@ test('remembers the settings, the player and the progress after a reload', async
   await expect(page.locator('.pitem[aria-current="true"] .st')).toHaveText('✓ Solved');
   await page.getByRole('button', { name: 'Priya Nair (Black)' }).click();
   await page.locator('#maxMate').selectOption('3');
-  await page.locator('#depth').selectOption('10'); // analyzes the game again
+  await page.locator('#depth').selectOption('10'); // the results at depth 14 in storage serve depth 10
   await page.reload();
   await expect(page.locator('#maxMate')).toHaveValue('3');
   await expect(page.locator('#depth')).toHaveValue('10');
   await expect(page.getByRole('button', { name: 'Priya Nair (Black)' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#ptext')).toHaveText('Analysis complete', { timeout: 90_000 });
-  // The analysis ran at depth 10, but the progress belongs to the game, so it stays.
+  // The progress belongs to the game record, so it stays.
   await expect(page.locator('.pitem', { hasText: '20… Rb8' }).locator('.st')).toHaveText('✓ Solved');
 });
 
