@@ -1,6 +1,6 @@
 # Blunder Drills: Game Library, Saved Puzzles and Training Plan
 
-Written 2026-11-07. Status: PR 1 (game library) in progress. PR 2 and PR 3 not started.
+Written 2026-11-07. Status: PR 1 (game library) is merged into the local `main`. PR 2 (saved puzzles and training, which was PR 2 and PR 3 before 2026-11-07) is in progress.
 
 ## Goal
 
@@ -20,7 +20,10 @@ All data stays in the browser. Nothing goes to a server. The page stays one `ind
 | Saved puzzle | A full copy of the puzzle, not a reference to the game. |
 | Training order | Random, and the puzzles that you missed come more often (see "Training"). |
 | Training scope | All saved puzzles. No filter in the first version. |
-| Export and import | Yes, in the first version (PR 3), because of the Safari risk below. |
+| Export and import | Yes, in the first version (PR 2), because of the Safari risk below. |
+| PRs | Two: PR 1 is the library. PR 2 is saved puzzles, training, stats, export and import together, because saved puzzles have no use without training. |
+| Delete a game | After a confirmation. |
+| Depth | Deeper saved results always win over a smaller chosen depth. |
 
 ## Why localStorage
 
@@ -43,8 +46,8 @@ IndexedDB has a much larger limit, but it is async and needs more code. All stor
 |---|---|
 | `drills.games` | The index: an array of `{ k, w, b, date, result, moves, at }`, one for each game in the library. `at` is the last time that you opened it (ms). The sample game is not in the index. |
 | `drills.g.<k>` | One game: `{ src, depth, done, evals, progress }`. `evals` is the engine result for each position, as `Engine.analyse` gives it, or `null` after removal. `done` is true when the analysis is complete. `progress` is `{ 'ply type': status }`, as before. |
-| `drills.saved` | PR 2: the saved puzzles, `{ <id>: { puzzle, game, savedAt } }`. |
-| `drills.train` | PR 3: the stats for each saved puzzle, `{ <id>: { box, tries, clean, last, lastAt } }`, and the totals. |
+| `drills.saved` | PR 2: the saved puzzles, `{ <id>: { p, g, at } }`. `p` is the copy of the puzzle with its `depth`. `g` is `{ k, w, b, date }` of its game. `at` is the time that you saved it. |
+| `drills.train` | PR 2: the stats for each saved puzzle, `{ <id>: { box, tries, clean, helped, revealed, last, lastAt } }`. A separate key, so that the stats come back when you save a puzzle again. The totals are sums over the saved puzzles. |
 
 `<k>` is the hash of the start position and the moves (`gameKey`), as before. The sample game also has a `drills.g.<k>` record, so that its progress and engine results stay, but it is not in the index.
 
@@ -64,29 +67,48 @@ IndexedDB has a much larger limit, but it is async and needs more code. All stor
 - **GoatCounter.** One new event, `game-reopened`, when you open a game from the list. No game data.
 - **README.** One sentence in the privacy section: your games, puzzles and stats stay in your browser.
 
-## PR 2: Saved puzzles
+## PR 2: Saved puzzles and training
 
-- A ☆ Save button in the trainer head, and a star on each row of the puzzle list. A second click removes the puzzle.
-- The page saves a full copy of the puzzle object: the position (FEN), the best move and line, the reply line (`refute`), the scores, the move played, the move before it, the type and the mate distance. It also saves the player names, the date and the game key, so that "Open game" works while the game is in the library.
+### Save a puzzle
+
+- A ☆ Save button in the trainer head, and a star on each row of the puzzle list. A second click removes the puzzle. The stats stay in `drills.train`, so they come back when you save the puzzle again.
+- The page saves a full copy of the puzzle object: the position (FEN), the best move and line, the reply line (`refute`), the scores, the move played, the move before it, the type, the mate distance and the depth of the analysis. It also saves the player names, the date and the game key.
 - The ID is `<game key>:<ply>`.
 - A copy still works when you delete the game, or when a new depth changes the type of the puzzle.
+- After the first save, the page calls `navigator.storage.persist()` one time. It costs nothing, even if Safari ignores it. Firefox can ask you for permission.
 
-## PR 3: Training, stats, export and import
+### Training mode
 
-- **"Train (N)"** in the header. The board stays the same. The left column shows the stats and the list of saved puzzles in place of the game and the chart.
+- **"Train (N)"** in the header, when you have saved puzzles. In training, the same link reads **"Back to game"**. The board stays the same. The left column shows the training panel in place of the game, the chart and the puzzle list. On a phone, the panel is below the board.
 - **The result of an attempt:**
   - **Clean**: solved on the first try, with no hint (`T.firstTry`).
   - **Helped**: solved after a wrong move or a hint.
-  - **Revealed**: you clicked Show solution.
-- **Order (simple spaced repetition).** Each saved puzzle has a box from 0 to 4. A new puzzle starts in box 0. Clean: box + 1 (at most 4). Helped: box − 1 (at least 0). Revealed: box 0. The page picks the next puzzle at random, with the weight 2^(4 − box) (16, 8, 4, 2, 1), so a missed puzzle comes 16 times more often than a puzzle that you know well. The page does not pick one of the last 3 puzzles shown (or fewer, when you saved fewer than 4).
-- **Stats.** For each puzzle: tries, clean solves, the last result and its date. Overall: this session, all time, and the split by type (mate, blunder, mistake).
+  - **Revealed**: you clicked Show solution before you solved it.
+- Only the first result counts for each time that a puzzle comes up. Retry and a later Show solution do not change it.
+- **Order (simple spaced repetition).** Each saved puzzle has a box from 0 to 4. A new puzzle starts in box 0. Clean: box + 1 (at most 4). Helped: box − 1 (at least 0). Revealed: box 0. Next picks a puzzle at random, with the weight 2^(4 − box) (16, 8, 4, 2, 1), so a missed puzzle comes 16 times more often than a puzzle that you know well. Next does not pick one of the last 3 puzzles shown (or fewer, when you saved fewer than 4).
+- There is no Prev in training.
+- **Training panel:**
+  - This session: the number of puzzles, and how many were clean, helped and revealed. A session starts when you click Train.
+  - All time, for each type (missed mate, blunder, mistake) and in total: saved puzzles, tries, and clean solves.
+  - The saved puzzles, the weakest first (lowest box). For each one: the move, the game, and its clean solves out of its tries. A click opens that puzzle now. The star removes it.
 - A training attempt does not change the status of the puzzle in its game.
+- The trainer head names the game, for example "Ann vs Bob: 3… Nf6".
+- The "Whole game" line is not available in training, because the game is not on the board.
 - The engine still loads. The page uses it to check a good move that is not the engine's first choice.
-- **Export.** One JSON file: `{ app: 'blunder-drills', v: 1, games, saved, train }`.
-- **Import.** Merge, not replace. Games: by key; keep the complete engine results at the greater depth, and merge the progress. Saved puzzles: by ID. Stats: keep the record with more tries.
-- Call `navigator.storage.persist()` once, after the first save. It costs nothing, even if Safari ignores it.
+- GoatCounter events: `puzzle-saved`, `training-started`, `training-clean`, `training-helped`, `training-revealed`, `backup-exported`, `backup-imported`. No game data.
+
+### Export and import
+
+- In the footer, always there: a line that says where the data is, with **Export a backup** and **Import**. Import must work on a new device with an empty library.
+- **Export.** One JSON file, `blunder-drills-<date>.json`: `{ app: 'blunder-drills', v: 1, at, games, saved, train }`. `games` is the index entries, each with its record (`rec`).
+- **Import.** Merge, not replace:
+  - Games: by key. A new game is added. For a game that you have, the complete engine results at the greater depth win, and the progress is merged (yours wins).
+  - Saved puzzles: by ID. A new one is added; yours wins. A puzzle whose position (FEN) chess.js cannot read is skipped.
+  - Stats: for each ID, the record with more tries wins.
+- A file that is not a backup gives an error, and nothing changes.
 
 ## Tests
 
 - `tests/library.spec.js`, with the engine blocked: the migration, a game that opens from cached results with no engine, the list (order, open, delete), and full storage.
+- `tests/training.spec.js`, with the engine blocked: save and remove, training results and boxes, a puzzle whose game is deleted, the pick order, export and import. A solve with the best move, the first hint and Show solution do not need the engine.
 - `tests/app.spec.js`, with the real engine: a reload opens the analyzed game from the cache, with the same puzzles.

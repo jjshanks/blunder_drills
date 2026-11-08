@@ -159,7 +159,10 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .seg button:last-child { border-right: 0 }
 .seg button[aria-pressed="true"] { background: var(--soft); font-weight: 600 }
 .plist { display: grid; list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line) } /* rows, not cards */
-.pitem { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent; cursor: pointer }
+.plist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--line) } /* the row, and its star */
+.pitem { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left; padding: 8px 12px; border: 0; background: transparent; cursor: pointer; height: 100% }
+.star { border: 0; background: transparent; color: var(--muted); padding: 8px 12px; cursor: pointer; font-size: 16px; line-height: 1 }
+.star:hover { color: var(--ink) } .star[aria-pressed="true"] { color: var(--mistake) }
 .pitem:hover { background: var(--surface) }
 .pitem[aria-current="true"] { background: var(--surface); box-shadow: inset 3px 0 0 var(--ink) } /* the puzzle on the board */
 .pitem .mv { font-family: var(--f-mono); font-size: 13.5px; font-variant-numeric: tabular-nums }
@@ -183,7 +186,8 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .tprompt { align-items: baseline; flex-wrap: nowrap }
 .tprompt .ptext { white-space: nowrap }
 .tctx { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: -4px }
-.tctx .btn.util { margin-left: auto }
+.tctx .tbtns { margin-left: auto; display: flex }
+.btn.util[aria-pressed="true"] { color: var(--mistake) } /* a saved puzzle: a gold star */
 .ctx { color: var(--muted); font-size: 14px; margin: 0; font-variant-numeric: tabular-nums }
 .ctx .mv { font-family: var(--f-mono); font-size: 13.5px; color: var(--ink) }
 .actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center }
@@ -191,6 +195,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .pager .btn:first-child { border-radius: var(--r) 0 0 var(--r) }
 .pager .btn + .btn { border-radius: 0 var(--r) var(--r) 0; margin-left: -1px }
 .pager .btn:focus-visible { position: relative; z-index: 1 }
+.pager #bPrev[hidden] + .btn { border-radius: var(--r); margin-left: 0 } /* training: Next alone */
 /* The board fits the window height with the head and the actions (--chrome: the height of all of them but the board,
    and the page margins). The script measures --chrome (fitBoard); 210px is the value before the script runs.
    The rest of the trainer keeps the board's width, so that the actions stay below the board in a wide, short window. */
@@ -260,6 +265,21 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .hside { display: flex; align-items: center; gap: 8px 18px; flex-wrap: wrap }
 .hlink { border: 0; background: none; padding: 2px 0; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--accent) }
 .hlink:hover { text-decoration: underline }
+.lnk { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer }
+#backupMsg.bad { color: var(--bad) }
+
+/* Training: the training panel takes the place of the game, the chart and the puzzle list. On a phone it is below the board. */
+.trainp { grid-area: train; background: none; border: 0; border-radius: 0; padding: 20px 0 0; border-top: 1px solid var(--line) }
+.layout:not(.training) .trainp, .layout.training .in, .layout.training .chartp, .layout.training .listp { display: none }
+.layout.training { grid-template-rows: auto 1fr; grid-template-areas: "head trainer" "train trainer" }
+@media (max-width: 920px) { .layout.training { grid-template-rows: none; grid-template-areas: "head" "trainer" "train" } }
+.trainp h3 { margin: 6px 0 -6px }
+.tstats { border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; justify-self: start }
+.tstats th, .tstats td { text-align: right; padding: 5px 0 5px 20px; border-bottom: 1px solid var(--line) }
+.tstats th:first-child, .tstats td:first-child { text-align: left; padding-left: 0 }
+.tstats th { font-weight: 600; color: var(--muted); font-size: 12.5px }
+.tstats tr:last-child td { font-weight: 600 }
+#tlist .game { color: var(--muted); font-size: 13.5px }
 .ftext { width: 100%; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 8px 10px; line-height: 1.45; resize: vertical }
 .fdlg { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); padding: 20px; width: min(520px, calc(100vw - 32px)); box-shadow: 0 16px 40px -16px rgba(0, 0, 0, .45) }
 .fdlg::backdrop { background: rgba(21, 20, 19, .45) }
@@ -295,6 +315,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       </div>
       <div class="hside">
         <div class="engine" id="engine"><i></i><span id="engineText">Loading Stockfish 18…</span></div>
+        <button class="hlink" id="bTrain" type="button" hidden>Train</button>
         <button class="hlink" id="bFeedback" type="button" aria-haspopup="dialog" hidden>Feedback</button>
       </div>
     </header>
@@ -319,7 +340,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 
     <section class="panel trainer" aria-labelledby="prompt">
       <div class="thead tprompt"><h2 class="prompt" id="prompt">Waiting for analysis</h2><span class="ptext" id="tcount"></span></div>
-      <div class="tctx"><p class="ctx" id="ctx">&nbsp;</p><button class="btn util" id="bFen">Copy FEN</button></div>
+      <div class="tctx"><p class="ctx" id="ctx">&nbsp;</p><span class="tbtns"><button class="btn util" id="bSave" type="button" aria-pressed="false" title="Save this puzzle for training" hidden>☆ Save</button><button class="btn util" id="bFen">Copy FEN</button></span></div>
       <div class="bwrap"><div class="bframe" id="bframe"><div class="ranks" id="ranks" aria-hidden="true"></div><div class="board" id="board" aria-label="Chess board"></div><div class="files" id="files" aria-hidden="true"></div></div></div>
       <div class="promo" id="promo" hidden><span class="label">Promote to</span></div>
       <div class="actions">
@@ -391,8 +412,20 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       </div>
       <ul class="plist" id="plist"></ul>
     </section>
+
+    <section class="panel trainp" aria-labelledby="h-train">
+      <h2 id="h-train">Training</h2>
+      <p class="summary" id="tSession"></p>
+      <table class="tstats" id="tStats"></table>
+      <h3 class="label">Saved puzzles, weakest first</h3>
+      <ul class="plist" id="tlist"></ul>
+    </section>
   </div>
-  <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, BSD 3-Clause License. Visits are counted with <a href="https://www.goatcounter.com">GoatCounter</a> (no cookies; your games are not sent). Your games and progress stay in this browser.<span id="fbPrivacy" hidden> Feedback that you send is stored by Cloudflare: your message or vote, the puzzle position and the time. Not your name, email or IP address.</span></p>
+  <p class="note" id="backup">Your games, saved puzzles and stats stay in this browser. Safari deletes them when you do not visit for 7 days, so keep a backup:
+    <button class="lnk" id="bExport" type="button">Export a backup</button> ·
+    <button class="lnk" id="bImport" type="button">Import</button><input type="file" id="importFile" accept=".json,application/json" hidden>
+    <span id="backupMsg" role="status"></span></p>
+  <p class="note">Engine: Stockfish 18 (GPLv3), <a href="https://github.com/nmrugg/stockfish.js">stockfish.js</a>, downloaded from unpkg when the page opens. Pieces: Cburnett, Wikimedia Commons, BSD 3-Clause License. Visits are counted with <a href="https://www.goatcounter.com">GoatCounter</a> (no cookies; your games are not sent).<span id="fbPrivacy" hidden> Feedback that you send is stored by Cloudflare: your message or vote, the puzzle position and the time. Not your name, email or IP address.</span></p>
 </div>
 <dialog class="fdlg" id="fbDlg" aria-labelledby="fbDlgH">
   <form class="fform" id="fbForm">
@@ -676,6 +709,7 @@ const Lib = {
   setIndex(list) { this.put('drills.games', list) },
   remove(k) { this.setIndex(this.index().filter(e => e.k !== k)); store.del('drills.g.' + k) }
 };
+const dateOf = h => /^\d{4}/.test(h.Date || '') ? h.Date.replace(/\.\?\?/g, '') : ''; // '2026.11.??' -> '2026.11'
 const nameOf = (h, c) => { const n = c === 'w' ? h.White : h.Black; return n && n !== '?' ? n : sideName(c) };
 // The record of a game, made when it does not exist yet. It takes the progress from before the library (drills.game.<k>).
 // A game that is not the sample goes to the top of the index.
@@ -686,7 +720,7 @@ function openRecord(k, src, g) {
   rec.src = src; rec.progress = rec.progress || {};
   if (Lib.put('drills.g.' + k, rec, k)) store.del(legacy);
   if (src !== SAMPLE) {
-    const h = g.headers, e = { k, w: nameOf(h, 'w'), b: nameOf(h, 'b'), date: /^\d{4}/.test(h.Date || '') ? h.Date.replace(/\.\?\?/g, '') : '', result: h.Result && h.Result !== '*' ? h.Result : '', moves: Math.ceil(g.moves.length / 2), at: Date.now() };
+    const h = g.headers, e = { k, w: nameOf(h, 'w'), b: nameOf(h, 'b'), date: dateOf(h), result: h.Result && h.Result !== '*' ? h.Result : '', moves: Math.ceil(g.moves.length / 2), at: Date.now() };
     Lib.setIndex([e, ...Lib.index().filter(x => x.k !== k)]);
   }
   return { ...rec, k };
@@ -726,6 +760,173 @@ function renderGames() {
   }));
 }
 function toggleGames(open = $('#glist').hidden) { $('#glist').hidden = !open; $('#bGames').setAttribute('aria-expanded', String(open)) }
+
+/* ---------------- saved puzzles + training ---------------- */
+// See docs/library-plan.md. Both keys are read once and written through.
+//   drills.saved  { <id>: { p, g, at } }. id: '<game key>:<ply>'. p: a full copy of the puzzle, with the depth of its analysis.
+//                 g: { k, w, b, date } of its game. at: when you saved it.
+//   drills.train  { <id>: { box, tries, clean, helped, revealed, last, lastAt } }. It stays when you remove a puzzle.
+const readJson = k => { try { const v = JSON.parse(store.get(k)); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} } catch { return {} } };
+const Saved = {
+  list: readJson('drills.saved'), stats: readJson('drills.train'),
+  write() { Lib.put('drills.saved', this.list) }, writeStats() { Lib.put('drills.train', this.stats) }
+};
+const SAVE_KEYS = ['ply', 'color', 'fen', 'best', 'pv', 'refute', 'before', 'after', 'played', 'prev', 'type', 'mateN', 'drop'];
+const savedId = p => p.id || S.key + ':' + p.ply; // a copy in training has its id
+const isSaved = p => !!Saved.list[savedId(p)];
+function toggleSave(p) {
+  const id = savedId(p);
+  if (Saved.list[id]) delete Saved.list[id];
+  else {
+    const copy = Object.fromEntries(SAVE_KEYS.filter(k => p[k] !== undefined).map(k => [k, p[k]]));
+    copy.depth = p.id ? p.depth : S.analyzedDepth;
+    Saved.list[id] = { p: copy, g: p.g || { k: S.key, w: playerName('w'), b: playerName('b'), date: dateOf(S.game.headers) }, at: Date.now() };
+    track('puzzle-saved');
+    if (!store.get('drills.persisted')) { store.set('drills.persisted', '1'); navigator.storage?.persist?.()?.catch(() => {}) } // ask once that the browser keep the data
+  }
+  Saved.write(); renderList(); renderSave(); renderTrain();
+}
+// The star after a puzzle in a list.
+function starEl(p) {
+  const b = document.createElement('button'), on = isSaved(p);
+  b.type = 'button'; b.className = 'star'; b.textContent = on ? '★' : '☆'; b.setAttribute('aria-pressed', String(on));
+  b.title = on ? 'Remove from training' : 'Save for training'; b.setAttribute('aria-label', `Save ${moveLabel(p.played)} for training`);
+  b.onclick = () => toggleSave(p);
+  return b;
+}
+// The Save button in the trainer head, and the Train link in the header.
+function renderSave() {
+  const b = $('#bSave'), p = T.p, n = Object.keys(Saved.list).length;
+  b.hidden = !p;
+  if (p) { const on = isSaved(p); b.textContent = on ? '★ Saved' : '☆ Save'; b.setAttribute('aria-pressed', String(on)); b.title = on ? 'Remove this puzzle from training' : 'Save this puzzle for training' }
+  $('#bTrain').hidden = !n && !M.on; $('#bTrain').textContent = M.on ? 'Back to game' : `Train (${n})`;
+}
+$('#bSave').onclick = () => { if (T.p) toggleSave(T.p) };
+
+// Training: saved puzzles in random order, the missed ones more often. Each puzzle has a box from 0 (missed) to 4
+// (known well), and the weight 2^(4 - box). The last 3 puzzles shown (fewer when there are fewer than 4) are not picked.
+const M = { on: false, done: false, recent: [], session: null };
+function pickNext(ids, stats, recent, rnd = Math.random) {
+  const n = Math.min(3, ids.length - 1), skip = new Set(n > 0 ? recent.slice(-n) : []);
+  const pool = ids.filter(id => !skip.has(id)), w = pool.map(id => 2 ** (4 - ((stats[id] || {}).box || 0)));
+  let r = rnd() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r < 0) return pool[i] }
+  return pool[pool.length - 1];
+}
+const aDepth = () => M.on && T.p && T.p.depth || S.analyzedDepth; // the depth for engine checks: that of the puzzle's analysis
+function startTrain() {
+  M.on = true; M.recent = []; M.session = { n: 0, clean: 0, helped: 0, revealed: 0 };
+  $('.layout').classList.add('training'); track('training-started');
+  nextTrain();
+}
+function stopTrain() {
+  M.on = false; $('.layout').classList.remove('training');
+  T.p = null; renderSave();
+  if (S.puzzles[S.current] && visible().includes(S.puzzles[S.current])) loadPuzzle(S.current); else if (S.game) showGameEnd();
+  syncBoard();
+}
+function nextTrain(id) {
+  const ids = Object.keys(Saved.list);
+  if (!ids.length) return stopTrain();
+  id = id || pickNext(ids, Saved.stats, M.recent);
+  M.recent.push(id); M.done = false;
+  const e = Saved.list[id];
+  openPuzzle({ ...e.p, id, g: e.g });
+  renderTrain();
+}
+// The first result each time that a puzzle comes up: 'clean', 'helped' or 'revealed'.
+function trainResult(kind) {
+  if (M.done) return;
+  M.done = true;
+  const id = T.p.id, st = Saved.stats[id] = { box: 0, tries: 0, clean: 0, helped: 0, revealed: 0, ...Saved.stats[id] };
+  st.tries++; st[kind]++; st.last = kind; st.lastAt = Date.now();
+  st.box = kind === 'clean' ? Math.min(4, st.box + 1) : kind === 'helped' ? Math.max(0, st.box - 1) : 0;
+  Saved.writeStats(); M.session.n++; M.session[kind]++;
+  track('training-' + kind); renderTrain(); updateNav();
+}
+const TYPE_PLURAL = { mate: 'Missed mates', blunder: 'Blunders', mistake: 'Mistakes' };
+function renderTrain() {
+  if (!M.on) return;
+  const s = M.session, plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  $('#tSession').textContent = s.n ? `This session: ${plural(s.n, 'puzzle')} · ${s.clean} clean · ${s.helped} with help · ${s.revealed} revealed.` : 'This session: no puzzles yet. Each puzzle counts once: clean (first try, no hint), with help, or revealed.';
+  // All time, for each type and in total: saved, tries, clean.
+  const rows = {}, total = ['Total', 0, 0, 0];
+  for (const [id, e] of Object.entries(Saved.list)) {
+    const r = rows[e.p.type] = rows[e.p.type] || [TYPE_PLURAL[e.p.type] || e.p.type, 0, 0, 0], st = Saved.stats[id] || {};
+    for (const x of [r, total]) { x[1]++; x[2] += st.tries || 0; x[3] += st.clean || 0 }
+  }
+  const pct = r => r[2] ? `${r[3]} (${Math.round(100 * r[3] / r[2])}%)` : '–';
+  const tr = (cells, tag) => { const row = document.createElement('tr'); for (const c of cells) { const el = document.createElement(tag); el.textContent = c; row.appendChild(el) } return row };
+  $('#tStats').replaceChildren(tr(['All time', 'Saved', 'Tries', 'Clean'], 'th'), ...['mate', 'blunder', 'mistake'].filter(t => rows[t]).map(t => tr([...rows[t].slice(0, 3), pct(rows[t])], 'td')), tr([...total.slice(0, 3), pct(total)], 'td'));
+  // The saved puzzles, the weakest first.
+  const box = id => (Saved.stats[id] || {}).box || 0;
+  const ids = Object.keys(Saved.list).sort((a, b) => box(a) - box(b) || Saved.list[a].at - Saved.list[b].at);
+  $('#tlist').replaceChildren(...ids.map(id => {
+    const e = Saved.list[id], p = { ...e.p, id, g: e.g }, st = Saved.stats[id], li = document.createElement('li'), b = document.createElement('button');
+    b.type = 'button'; b.className = 'pitem';
+    if (T.p && T.p.id === id) b.setAttribute('aria-current', 'true');
+    const side = document.createElement('span'), line = document.createElement('span'), mv = document.createElement('span'), game = document.createElement('span'), stat = document.createElement('span');
+    side.className = 'side ' + (p.color === 'b' ? 'b' : 'w'); line.className = 'line'; mv.className = 'mv'; game.className = 'game'; stat.className = 'st';
+    mv.textContent = moveLabel(p.played); game.textContent = ` · ${p.g.w} vs ${p.g.b}`;
+    stat.textContent = st && st.tries ? `${st.clean}/${st.tries} clean` : 'Not tried';
+    line.append(mv, kindEl(p), game); b.append(side, line, stat);
+    b.onclick = () => nextTrain(id);
+    li.append(b, starEl(p)); return li;
+  }));
+}
+$('#bTrain').onclick = () => M.on ? stopTrain() : startTrain();
+
+// Export and import: one JSON file with the games, the saved puzzles and the stats. Import merges into what is here.
+function exportData() {
+  const games = Lib.index().map(e => ({ ...e, rec: Lib.get(e.k) })).filter(e => e.rec);
+  const n = Object.keys(Saved.list).length;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ app: 'blunder-drills', v: 1, at: new Date().toISOString(), games, saved: Saved.list, train: Saved.stats })], { type: 'application/json' }));
+  a.download = `blunder-drills-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  track('backup-exported');
+  backupMsg(`Exported ${games.length} game${games.length === 1 ? '' : 's'} and ${n} saved puzzle${n === 1 ? '' : 's'}.`);
+}
+function importData(text) {
+  let d; try { d = JSON.parse(text) } catch { d = null }
+  if (!d || d.app !== 'blunder-drills' || d.v !== 1) throw new Error('That file is not a Blunder Drills backup.');
+  const index = new Map(Lib.index().map(e => [e.k, e])), out = { games: 0, puzzles: 0 };
+  for (const e of Array.isArray(d.games) ? d.games : []) {
+    const r = e && e.rec;
+    if (!e || typeof e.k !== 'string' || !r || typeof r.src !== 'string') continue;
+    const mine = Lib.get(e.k), progress = r.progress && typeof r.progress === 'object' ? r.progress : {};
+    let rec = { src: r.src, depth: r.depth || 0, done: !!r.done, evals: Array.isArray(r.evals) ? r.evals : null, progress };
+    if (mine) {
+      const theirs = rec.done && rec.evals && !(mine.done && mine.evals && mine.depth >= rec.depth); // complete and deeper
+      rec = { ...mine, ...(theirs && { depth: rec.depth, done: true, evals: rec.evals }), progress: { ...progress, ...mine.progress } };
+    } else out.games++;
+    Lib.put('drills.g.' + e.k, rec, e.k);
+    if (e.k === S.key) { S.progress = rec.progress; for (const p of S.puzzles) p.status = rec.progress[p.ply + p.type] || p.status }
+    const old = index.get(e.k);
+    index.set(e.k, { k: e.k, w: String(e.w || 'White'), b: String(e.b || 'Black'), date: String(e.date || ''), result: String(e.result || ''), moves: +e.moves || 0, at: Math.max(+e.at || 0, old ? old.at : 0) });
+  }
+  Lib.setIndex([...index.values()].sort((a, b) => b.at - a.at));
+  for (const [id, e] of Object.entries(d.saved && typeof d.saved === 'object' ? d.saved : {})) {
+    if (Saved.list[id] || !e || !e.p || !e.g) continue;
+    try { new Chess(e.p.fen) } catch { continue } // a position that chess.js cannot read
+    Saved.list[id] = e; out.puzzles++;
+  }
+  for (const [id, st] of Object.entries(d.train && typeof d.train === 'object' ? d.train : {})) if (st && (st.tries || 0) > ((Saved.stats[id] || {}).tries || 0)) Saved.stats[id] = st;
+  Saved.write(); Saved.writeStats();
+  renderGames(); renderList(); renderSave(); renderTrain();
+  track('backup-imported');
+  return out;
+}
+function backupMsg(text, bad) { const m = $('#backupMsg'); m.textContent = text; m.className = bad ? 'bad' : '' }
+$('#bExport').onclick = exportData;
+$('#bImport').onclick = () => $('#importFile').click();
+$('#importFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const n = importData(await f.text());
+    backupMsg(`Imported ${n.games} new game${n.games === 1 ? '' : 's'} and ${n.puzzles} new saved puzzle${n.puzzles === 1 ? '' : 's'}.`);
+  } catch (err) { backupMsg(err.message, true) }
+};
 // One line for the loaded game, for example "Martin Reyes vs Priya Nair · 1-0 · 44 moves".
 function renderGameSummary() {
   const g = S.game, el = $('#gsum'); el.hidden = !g; if (!g) return;
@@ -775,6 +976,7 @@ function refreshPuzzles() {
 // visible one in game order (or the last one). With no puzzle on the board, open the first one, but do not
 // close the whole game if it is open.
 function syncBoard() {
+  if (M.on) return; // training keeps its puzzle while the game analysis goes on
   const vis = visible();
   if (T.p ? vis.includes(T.p) : T.lines) return;
   const p = T.p ? vis.find(q => q.ply >= T.p.ply) || vis[vis.length - 1] : vis[0];
@@ -843,7 +1045,7 @@ function renderList() {
     b.querySelector('.mv').textContent = moveLabel(p.played); b.querySelector('.mv').after(kindEl(p));
     b.querySelector('.ev').textContent = ` · ${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))}`;
     b.onclick = () => loadPuzzle(idx);
-    li.appendChild(b); ul.appendChild(li);
+    li.append(b, starEl(p)); ul.appendChild(li);
   }
   $('#copyAll').disabled = !vis.length;
 }
@@ -915,20 +1117,24 @@ function showPosition(fen, lastMove) {
   T.p = null; T.chess = new Chess(fen); T.orient = T.chess.turn(); T.sel = null; T.hint = null; T.mode = 'idle'; T.line = null; T.lines = null; renderStepper();
   T.last = lastMove ? [lastMove.from, lastMove.to] : null;
   $('#tcount').textContent = '';
-  emptyText(); renderBoard(); updateNav();
+  emptyText(); renderBoard(); updateNav(); renderSave();
 }
 function loadPuzzle(idx) {
   const p = S.puzzles[idx]; if (!p) return;
-  S.current = idx; T.p = p; T.token++;
+  S.current = idx; openPuzzle(p);
+}
+// Put puzzle p on the board: a puzzle of the game, or a saved copy in training.
+function openPuzzle(p) {
+  T.p = p; T.token++;
   T.chess = new Chess(p.fen); T.orient = p.color; T.sel = null; T.hint = null; T.hintAt = null; T.pending = null; $('#promo').hidden = true; T.line = null; T.lines = null; renderStepper();
   T.last = p.prev ? [p.prev.from, p.prev.to] : null;
   T.mode = 'play'; T.left = p.type === 'mate' ? p.mateN : 1; T.firstTry = true; T.tried = false;
   const side = sideName(p.color);
   $('#prompt').textContent = p.type === 'mate' ? `${side} to move. Mate in ${p.mateN}.` : `${side} to move. Improve on ${p.played.san}.`;
   const ctx = $('#ctx'), mv = document.createElement('span'); mv.className = 'mv'; mv.textContent = moveLabel(p.played);
-  ctx.replaceChildren('In the game: ', mv, ...(p.type === 'mate' ? [] : [kindEl(p)]), ` · ${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))}`);
+  ctx.replaceChildren(p.g ? `${p.g.w} vs ${p.g.b}: ` : 'In the game: ', mv, ...(p.type === 'mate' ? [] : [kindEl(p)]), ` · ${fmt(forWhite(p.before, p.color))} → ${fmt(forWhite(p.after, p.color))}`);
   setFeedback('info', p.type === 'mate' ? 'Your move. The arrow shows the game move, which missed the mate. The engine plays the defense.' : 'Your move. The arrow shows the game move.');
-  renderBoard(); renderList(); drawChart(); updateNav();
+  renderBoard(); renderList(); drawChart(); updateNav(); renderSave();
 }
 // Parts: strings, and moves { label, k, i } that become links to move i of line k.
 function appendParts(el, parts) {
@@ -1099,7 +1305,7 @@ async function userMove(m) {
   if (p.type === 'mate') {
     if (T.chess.isCheckmate()) return solved(`Found it: ${mv.san}. That is checkmate.`, T.chess.history({ verbose: true }).map(uciOf), p.before);
     setFeedback('info', 'Checking your move…');
-    const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
+    const r = await Engine.analyse(T.chess.fen(), Math.max(12, aDepth()), true);
     if (tok !== T.token) return;
     if (!r) return engineGone();
     const ours = neg(r.score);
@@ -1114,7 +1320,7 @@ async function userMove(m) {
   } else {
     if (uciOf(mv) === p.best) return solved(`Found it: ${mv.san}, the engine's first choice.`, p.pv.slice(0, 6), p.before);
     setFeedback('info', 'Checking your move…');
-    const r = await Engine.analyse(T.chess.fen(), Math.max(12, S.analyzedDepth), true);
+    const r = await Engine.analyse(T.chess.fen(), Math.max(12, aDepth()), true);
     if (tok !== T.token) return;
     if (!r) return engineGone();
     const ours = neg(r.score);
@@ -1134,7 +1340,8 @@ const engineGone = () => setFeedback('bad', 'The engine stopped working, so this
 // engine: the engine's first-choice line, when the solver found another good move.
 function solved(msg, line, score, engine) {
   const p = T.p; T.mode = 'done';
-  if (!p.status || p.status === 'new') { p.status = T.firstTry ? 'solved' : 'retry'; saveStatus(p); track(T.firstTry ? 'puzzle-solved' : 'puzzle-solved-retry') }
+  if (M.on) trainResult(T.firstTry ? 'clean' : 'helped');
+  else if (!p.status || p.status === 'new') { p.status = T.firstTry ? 'solved' : 'retry'; saveStatus(p); track(T.firstTry ? 'puzzle-solved' : 'puzzle-solved-retry') }
   const note = tacticNoteParts(p, line);
   setFeedback('good', msg, null, note); askVote(p, line, note);
   openLines(line, score, p.type === 'mate' ? line.length : 1, line, engine);
@@ -1178,7 +1385,7 @@ function openLines(best, score, at, noteLine = best, engine) {
   T.lines = {
     best: makeLine('Better', best, score, at, { ...start, ...(t && { [t.ply + 1]: t }) }),
     game: makeLine('Game', [p.played.uci, ...(p.refute || [])].slice(0, 6), p.after, 0, { ...start, ...(th && { 1: th }), ...(a && { [a.ply + 2]: a }) }), // +2: after the game move
-    whole: wholeLine(p.ply)
+    whole: M.on ? null : wholeLine(p.ply) // in training, the game of the puzzle is not on the board
   };
   if (engine) { const e = findTactics(p.fen, engine); T.lines.engine = makeLine('Engine', engine, p.before, 0, { ...start, ...(e && { [e.ply + 1]: e }) }) }
   showLine('best');
@@ -1191,7 +1398,7 @@ async function evalLine(L) {
   const c = new Chess(L.fen);
   for (let i = 1; i <= L.moves.length; i++) {
     playUci(c, L.moves[i - 1]);
-    const r = await evalPosition(c.fen(), S.analyzedDepth, true);
+    const r = await evalPosition(c.fen(), aDepth(), true);
     if (!r || !T.lines || T.lines.best !== L) return;
     L.evals[i] = forWhite(r.score, c.turn());
     drawChart();
@@ -1453,7 +1660,8 @@ function tacticNoteParts(p, line) {
 const tacticNotes = (p, line) => tacticNoteParts(p, line).map(x => typeof x === 'string' ? x : x.label).join('');
 function showSolution() {
   const p = T.p; if (!p) return;
-  if (p.status !== 'solved' && p.status !== 'retry') { if (p.status !== 'revealed') track('puzzle-revealed'); p.status = 'revealed'; saveStatus(p) }
+  if (M.on) trainResult('revealed');
+  else if (p.status !== 'solved' && p.status !== 'retry') { if (p.status !== 'revealed') track('puzzle-revealed'); p.status = 'revealed'; saveStatus(p) }
   T.mode = 'show';
   const note = tacticNoteParts(p, p.pv);
   setFeedback('info', 'Solution. Compare it with the game line below.', null, note); askVote(p, p.pv, note);
@@ -1463,8 +1671,9 @@ function showSolution() {
 }
 function updateNav() {
   const vis = visible(); const vi = T.p ? vis.indexOf(T.p) : -1; const has = !!T.p;
-  $('#tcount').textContent = vi >= 0 ? `Puzzle ${vi + 1} of ${vis.length}` : '';
-  $('#bPrev').disabled = vi <= 0; $('#bNext').disabled = !vis.length || vi === vis.length - 1;
+  $('#tcount').textContent = M.on ? `Training · ${M.session.n} done` : vi >= 0 ? `Puzzle ${vi + 1} of ${vis.length}` : '';
+  $('#bPrev').hidden = M.on; // training has no order to go back in
+  $('#bPrev').disabled = vi <= 0; $('#bNext').disabled = M.on ? false : !vis.length || vi === vis.length - 1;
   $('#bHint').disabled = !has || T.mode !== 'play'; $('#bSol').disabled = !has; $('#bRetry').hidden = !has || !(T.tried || T.mode === 'done' || T.mode === 'show'); $('#bFen').disabled = !T.chess;
   $('#bNext').classList.toggle('primary', T.mode === 'done' || T.mode === 'show'); // while you play, the board is the main action
 }
@@ -1479,9 +1688,9 @@ function fitBoard() {
 // The trainer is sticky. When it is taller than the window, a negative top lets its bottom (the line and its buttons) come into view.
 function fitSticky() { fitBoard(); const tr = $('.trainer'); tr.style.top = Math.min(16, innerHeight - tr.offsetHeight - 16) + 'px' }
 new ResizeObserver(fitSticky).observe($('.trainer')); addEventListener('resize', fitSticky);
-$('#bNext').onclick = () => { const vis = visible(); const vi = T.p ? vis.indexOf(T.p) : -1; if (vis[vi + 1]) loadPuzzle(S.puzzles.indexOf(vis[vi + 1])) };
+$('#bNext').onclick = () => { if (M.on) return nextTrain(); const vis = visible(); const vi = T.p ? vis.indexOf(T.p) : -1; if (vis[vi + 1]) loadPuzzle(S.puzzles.indexOf(vis[vi + 1])) };
 $('#bPrev').onclick = () => { const vis = visible(); const vi = vis.indexOf(T.p); if (vi > 0) loadPuzzle(S.puzzles.indexOf(vis[vi - 1])) };
-$('#bRetry').onclick = () => loadPuzzle(S.current);
+$('#bRetry').onclick = () => M.on ? openPuzzle(T.p) : loadPuzzle(S.current);
 $('#bSol').onclick = () => showSolution();
 $('#bHint').onclick = () => {
   if (!T.p || T.mode !== 'play') return;
@@ -1492,7 +1701,7 @@ $('#bHint').onclick = () => {
   if (fen === p.fen && p.best) return give(p.best, p.pv);
   setFeedback('info', 'Thinking…');
   const tok = T.token;
-  Engine.analyse(fen, Math.max(12, S.analyzedDepth), true).then(r => { if (tok !== T.token) return; if (!r) return engineGone(); if (r.best) give(r.best, r.pv) });
+  Engine.analyse(fen, Math.max(12, aDepth()), true).then(r => { if (tok !== T.token) return; if (!r) return engineGone(); if (r.best) give(r.best, r.pv) });
 };
 // The second hint names the motif of the better line. With no motif there, it names what the game move allowed.
 function secondHint(p, fen, pv) {
@@ -1640,12 +1849,13 @@ $('#mistakes').onchange = () => { store.set('drills.mistakes', $('#mistakes').ch
 $('#depth').onchange = () => { if (S.src) analyze(S.src) }; // a new depth analyzes the game again
 showPosition(START, null);
 drawChart();
+renderSave();
 Engine.start().catch(() => { $('#err').textContent = 'Stockfish could not start in this browser. Try a current Chrome, Edge, Firefox or Safari.'; $('#err').hidden = false });
 analyze(startSrc());
 store.del('drills.src'); // the last game from before the library: analyze() put it in the library
 
 // Read-only hooks for the automated tests in tests/. The app does not use them.
-window.BlunderDrills = Object.freeze({ SAMPLE, cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, findTactics, tacticWords, tacticHint, tacticNotes, studyPgn, gameKey, Lib, state: S, trainer: T, Chess });
+window.BlunderDrills = Object.freeze({ SAMPLE, cleanPgn, parseInput, detectPuzzles, wc, neg, fmt, mateDist, pvSan, material, findTactics, tacticWords, tacticHint, tacticNotes, studyPgn, gameKey, Lib, Saved, pickNext, state: S, trainer: T, Chess });
 </script>
 
 </body>
