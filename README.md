@@ -6,6 +6,10 @@ blunders and missed mates, and turns each one into a puzzle.
 When a fork, pin, skewer, discovered attack, double check or free piece was
 missed or allowed, the app names it in the second hint and after the solution.
 
+Your games stay in the browser, under **Your games**. Save a puzzle with its
+star, then click **Train** to drill your saved puzzles in random order. The
+puzzles that you missed come more often, and the page keeps your stats.
+
 The whole app is one file, `index.html`. There is no build step.
 
 ## Run
@@ -41,6 +45,11 @@ npm test
   detection and the tactics checker. It blocks the engine download.
 - `tests/app.spec.js` drives the page with the real engine. It needs network
   access to unpkg and jsDelivr.
+- `tests/library.spec.js` tests the game library: games and engine results in
+  localStorage, the move from the old keys, Your games, and full storage. It
+  blocks the engine download.
+- `tests/training.spec.js` tests saved puzzles, training mode and its stats, and
+  export and import. It blocks the engine download.
 - `tests/feedback.spec.js` tests the feedback dialog and the thumbs. It catches
   the sends, so it never calls the real Worker.
 - `tests/feedback-worker.spec.js` tests the feedback Worker in Node, with an
@@ -63,6 +72,18 @@ One-time setup: in the repository settings, under Pages, set Source to
 
 The deploy job also writes the short commit SHA into `APP_VERSION` in the
 published page, so that each feedback row tells which code gave the advice.
+
+## Your games and privacy
+
+The page keeps your games, their engine results, your puzzle progress, the
+puzzles that you save for training and your training stats in your browser
+(localStorage), so that you can open a game again without a new paste or
+analysis. They are not sent anywhere. **Export a backup** in the page footer
+saves all of it as one JSON file, and **Import** merges such a file into the
+browser, also on a different device. When the browser storage is
+full, the page removes the engine results of the games that you opened least
+recently first. Safari deletes this data when you do not open the site for 7
+days of Safari use, so keep a backup. See `docs/library-plan.md`.
 
 ## Feedback and privacy
 
