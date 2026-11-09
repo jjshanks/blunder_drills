@@ -274,6 +274,8 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
 .layout.training { grid-template-rows: auto 1fr; grid-template-areas: "head trainer" "train trainer" }
 @media (max-width: 920px) { .layout.training { grid-template-rows: none; grid-template-areas: "head" "trainer" "train" } }
 .trainp h3 { margin: 6px 0 -6px }
+.tlegend { max-width: 60ch }
+.tlegend b { color: var(--ink); font-weight: 600 }
 .tstats { border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; justify-self: start }
 .tstats th, .tstats td { text-align: right; padding: 5px 0 5px 20px; border-bottom: 1px solid var(--line) }
 .tstats th:first-child, .tstats td:first-child { text-align: left; padding-left: 0 }
@@ -417,6 +419,7 @@ select { padding: 7px 10px; border-radius: 5px; border: 1px solid var(--line); b
       <h2 id="h-train">Training</h2>
       <p class="summary" id="tSession"></p>
       <table class="tstats" id="tStats"></table>
+      <p class="note tlegend" id="tLegend"><b>First try</b>: solved with no hint and no wrong move. <b>After a miss or hint</b>: solved after a wrong move or a hint. <b>Revealed</b>: you clicked Show solution. Only your first result counts each time a puzzle comes up, and the puzzles that you miss come back more often.</p>
       <h3 class="label">Saved puzzles, weakest first</h3>
       <ul class="plist" id="tlist"></ul>
     </section>
@@ -848,8 +851,8 @@ const TYPE_PLURAL = { mate: 'Missed mates', blunder: 'Blunders', mistake: 'Mista
 function renderTrain() {
   if (!M.on) return;
   const s = M.session, plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-  $('#tSession').textContent = s.n ? `This session: ${plural(s.n, 'puzzle')} · ${s.clean} clean · ${s.helped} with help · ${s.revealed} revealed.` : 'This session: no puzzles yet. Each puzzle counts once: clean (first try, no hint), with help, or revealed.';
-  // All time, for each type and in total: saved, tries, clean.
+  $('#tSession').textContent = s.n ? `This session: ${plural(s.n, 'puzzle')} · ${s.clean} first try · ${s.helped} after a miss or hint · ${s.revealed} revealed.` : 'This session: no puzzles yet.';
+  // All time, for each type and in total: saved, tries, first try (the 'clean' results).
   const rows = {}, total = ['Total', 0, 0, 0];
   for (const [id, e] of Object.entries(Saved.list)) {
     const r = rows[e.p.type] = rows[e.p.type] || [TYPE_PLURAL[e.p.type] || e.p.type, 0, 0, 0], st = Saved.stats[id] || {};
@@ -857,7 +860,7 @@ function renderTrain() {
   }
   const pct = r => r[2] ? `${r[3]} (${Math.round(100 * r[3] / r[2])}%)` : '–';
   const tr = (cells, tag) => { const row = document.createElement('tr'); for (const c of cells) { const el = document.createElement(tag); el.textContent = c; row.appendChild(el) } return row };
-  $('#tStats').replaceChildren(tr(['All time', 'Saved', 'Tries', 'Clean'], 'th'), ...['mate', 'blunder', 'mistake'].filter(t => rows[t]).map(t => tr([...rows[t].slice(0, 3), pct(rows[t])], 'td')), tr([...total.slice(0, 3), pct(total)], 'td'));
+  $('#tStats').replaceChildren(tr(['All time', 'Saved', 'Tries', 'First try'], 'th'), ...['mate', 'blunder', 'mistake'].filter(t => rows[t]).map(t => tr([...rows[t].slice(0, 3), pct(rows[t])], 'td')), tr([...total.slice(0, 3), pct(total)], 'td'));
   // The saved puzzles, the weakest first.
   const box = id => (Saved.stats[id] || {}).box || 0;
   const ids = Object.keys(Saved.list).sort((a, b) => box(a) - box(b) || Saved.list[a].at - Saved.list[b].at);
@@ -868,7 +871,7 @@ function renderTrain() {
     const side = document.createElement('span'), line = document.createElement('span'), mv = document.createElement('span'), game = document.createElement('span'), stat = document.createElement('span');
     side.className = 'side ' + (p.color === 'b' ? 'b' : 'w'); line.className = 'line'; mv.className = 'mv'; game.className = 'game'; stat.className = 'st';
     mv.textContent = moveLabel(p.played); game.textContent = ` · ${p.g.w} vs ${p.g.b}`;
-    stat.textContent = st && st.tries ? `${st.clean}/${st.tries} clean` : 'Not tried';
+    stat.textContent = st && st.tries ? `${st.clean}/${st.tries} first try` : 'Not tried';
     line.append(mv, kindEl(p), game); b.append(side, line, stat);
     b.onclick = () => nextTrain(id);
     li.append(b, starEl(p)); return li;

@@ -65,10 +65,12 @@ test('training counts the first result of each attempt, moves the box, and keeps
   await expect(page.locator('#bPrev')).toBeHidden();
   await expect(page.locator('#tcount')).toHaveText('Training · 0 done');
   await expect(page.locator('#tlist .st')).toHaveText(['Not tried']);
+  await expect(page.locator('#tSession')).toHaveText('This session: no puzzles yet.');
+  await expect(page.locator('#tLegend')).toContainText('First try: solved with no hint and no wrong move.');
 
   await play(page, 'g7g6'); // clean
   await expect(page.locator('#fb')).toContainText('Found it: g6');
-  await expect(page.locator('#tSession')).toHaveText('This session: 1 puzzle · 1 clean · 0 with help · 0 revealed.');
+  await expect(page.locator('#tSession')).toHaveText('This session: 1 puzzle · 1 first try · 0 after a miss or hint · 0 revealed.');
   await expect(page.locator('#tcount')).toHaveText('Training · 1 done');
   await expect(page.locator('#lWhich [data-k="whole"]')).toBeHidden(); // no game on the board
   expect(await ls(page, 'drills.train')).toEqual({ [id]: { box: 1, tries: 1, clean: 1, helped: 0, revealed: 0, last: 'clean', lastAt: expect.any(Number) } });
@@ -77,17 +79,17 @@ test('training counts the first result of each attempt, moves the box, and keeps
   await page.locator('#bSol').click();
   expect((await ls(page, 'drills.train'))[id]).toMatchObject({ box: 1, tries: 1 });
 
-  await page.locator('#bNext').click(); // a hint makes it "with help"
+  await page.locator('#bNext').click(); // a hint makes it "after a miss or hint"
   await page.locator('#bHint').click();
   await play(page, 'g7g6');
-  await expect(page.locator('#tSession')).toHaveText('This session: 2 puzzles · 1 clean · 1 with help · 0 revealed.');
+  await expect(page.locator('#tSession')).toHaveText('This session: 2 puzzles · 1 first try · 1 after a miss or hint · 0 revealed.');
   expect((await ls(page, 'drills.train'))[id]).toMatchObject({ box: 0, tries: 2, helped: 1 });
 
   await page.locator('#bNext').click();
   await page.locator('#bSol').click();
   expect((await ls(page, 'drills.train'))[id]).toMatchObject({ box: 0, tries: 3, revealed: 1, last: 'revealed' });
-  await expect(page.locator('#tStats tr')).toHaveText(['All timeSavedTriesClean', 'Blunders131 (33%)', 'Total131 (33%)']);
-  await expect(page.locator('#tlist .st')).toHaveText(['1/3 clean']);
+  await expect(page.locator('#tStats tr')).toHaveText(['All timeSavedTriesFirst try', 'Blunders131 (33%)', 'Total131 (33%)']);
+  await expect(page.locator('#tlist .st')).toHaveText(['1/3 first try']);
 
   await page.locator('#bTrain').click(); // back to the game
   await expect(page.locator('.listp')).toBeVisible();
@@ -139,7 +141,7 @@ test('exports a backup and imports it into an empty browser', async ({ page }) =
   await page.locator('#plist .star').click();
   await page.locator('#bTrain').click();
   await play(page, 'g7g6');
-  await expect(page.locator('#tSession')).toContainText('1 clean');
+  await expect(page.locator('#tSession')).toContainText('1 first try');
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#bExport').click()]);
   expect(download.suggestedFilename()).toMatch(/^blunder-drills-\d{4}-\d\d-\d\d\.json$/);
   await expect(page.locator('#backupMsg')).toHaveText('Exported 1 game and 1 saved puzzle.');
