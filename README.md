@@ -3,6 +3,10 @@
 Paste a chess game in PGN format. Stockfish runs in your browser, finds the
 blunders and missed mates, and turns each one into a puzzle.
 
+To give the page a game, copy its PGN, then click **Paste game** or press
+Ctrl+V on the page. When a paste has more than one game, the page uses the
+first one.
+
 When a fork, pin, skewer, discovered attack, double check or free piece was
 missed or allowed, the app names it in the second hint and after the solution.
 

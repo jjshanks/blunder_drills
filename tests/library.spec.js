@@ -41,6 +41,35 @@ async function pasteGame(page, text) {
   await page.locator('#paste').click();
 }
 
+// What Ctrl+V does: a paste event on the page, with the text in it. It needs no clipboard permission.
+const pasteKey = (page, text, target = 'body') => page.evaluate(([text, target]) => {
+  const data = new DataTransfer(); data.setData('text/plain', text);
+  document.querySelector(target).dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+}, [text, target]);
+
+test('Ctrl+V on the page opens the game; of many games, the first one, with a note', async ({ page }) => {
+  await pasteKey(page, GAME);
+  await expect(page.locator('#gsum')).toHaveText('Ann vs Bob · 1-0 · 4 moves');
+  await expect(page.locator('#multiHint')).toBeHidden();
+  await pasteKey(page, OTHER + '\n\n' + GAME);
+  await expect(page.locator('#gsum')).toHaveText('Cy vs Di · 2 moves');
+  await expect(page.locator('#multiHint')).toHaveText('The paste had more than one game. This is the first one.');
+  expect((await ls(page, 'drills.g.' + await keyOf(page, OTHER))).src).toBe(OTHER); // only the first game is kept
+  expect((await ls(page, 'drills.games')).map(e => e.w)).toEqual(['Cy', 'Ann']);
+  await page.locator('#bGames').click();
+  await page.locator('#glist .gopen').nth(1).click(); // the note goes with the paste
+  await expect(page.locator('#gsum')).toHaveText('Ann vs Bob · 1-0 · 4 moves');
+  await expect(page.locator('#multiHint')).toBeHidden();
+
+  // A paste in a text field stays there, and text that is not a game keeps the current game.
+  await page.locator('#bFeedback').click();
+  await pasteKey(page, OTHER, '#fbText');
+  await page.locator('#fbCancel').click();
+  await pasteKey(page, 'not a game');
+  await expect(page.locator('#err')).toContainText('Could not');
+  await expect(page.locator('#gsum')).toHaveText('Ann vs Bob · 1-0 · 4 moves');
+});
+
 test('a game with complete engine results in storage opens at once, with no engine', async ({ page }) => {
   await seed(page, GAME, { depth: 14, done: true, evals: await fakeEvals(page, GAME), progress: { '5blunder': 'solved' } });
   await page.reload();

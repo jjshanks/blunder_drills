@@ -97,6 +97,18 @@ test.describe('PGN input', () => {
     expect(errs[4]).toBe('Could not play the move Ke3. Check it for a typo or an illegal move.'); // an illegal move is named
   });
 
+  test('firstGame takes the first game of a paste with many games', async ({ page }) => {
+    const a = '[White "A"]\n[Black "B"]\n\n1. e4 e5 {a note\nwith [two] lines} 2. Nf3 1-0', b = '[White "C"]\n[Black "D"]\n\n1. d4 d5 0-1';
+    const r = await run(page, (D, [a, b]) => {
+      const one = D.firstGame(a), two = D.firstGame(a + '\r\n\r\n' + b + '\n\n' + b);
+      return { one, two, moves: D.parseInput(two.text).moves.length, plain: D.firstGame('1. e4 e5') };
+    }, [a, b]);
+    expect(r.one).toEqual({ text: a, more: false }); // one game: the text is not changed
+    expect(r.two).toEqual({ text: a, more: true });
+    expect(r.moves).toBe(3);
+    expect(r.plain).toEqual({ text: '1. e4 e5', more: false });
+  });
+
   test('pvSan writes engine lines with move numbers', async ({ page }) => {
     const r = await run(page, D => [
       D.pvSan('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', ['e2e4', 'e7e5', 'g1f3']),

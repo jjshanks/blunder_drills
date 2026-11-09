@@ -223,6 +223,19 @@ test('rejects the game move, resets the board, then counts a later solve as a re
   await expect.poll(() => events(hits)).toEqual(['puzzle-solved-retry']);
 });
 
+test('Show solution just after a wrong move keeps the solution on the board', async ({ page }) => {
+  await openAnalyzed(page);
+  const p = await current(page);
+  await play(page, p.played);
+  await expect(page.locator('#fb')).toHaveClass(/bad/);
+  await page.keyboard.press('s'); // before the board goes back to the puzzle position, 700 ms after the wrong move
+  await expectBoardAt(page, p, p.pv, 1);
+  await page.waitForTimeout(1000); // the time in which the reset of the wrong move would come
+  expect(await page.evaluate(() => window.BlunderDrills.trainer.mode)).toBe('show');
+  expect(await boardFen(page)).toBe(await fenAfter(page, p, p.pv, 1));
+  await expect(page.locator('.sq.mine')).toHaveCount(0);
+});
+
 test('plays out the missed mate in 2 against the engine', async ({ page }) => {
   await openAnalyzed(page);
   await page.locator('.pitem', { hasText: 'Missed mate in 2' }).click();

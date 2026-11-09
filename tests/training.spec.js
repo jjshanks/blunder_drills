@@ -166,6 +166,40 @@ test('exports a backup and imports it into an empty browser', async ({ page }) =
   await expect(page.locator('#backupMsg')).toHaveText('Imported 0 new games and 0 new saved puzzles.');
 });
 
+test('two tabs: a puzzle saved in one tab stays when the other tab saves', async ({ page }) => {
+  const k = await seedGame(page), id = k + ':5';
+  const other = await page.context().newPage(); // it opens with no saved puzzles
+  await other.route('https://unpkg.com/**', route => route.abort());
+  await other.goto('/');
+  await expect(other.locator('#pmeta')).toHaveText(' · 8 positions at depth 14, from storage');
+  await page.locator('#plist .star').click();
+  await expect(other.locator('#bTrain')).toHaveText('Train (1)'); // the other tab reads it again
+  await expect(other.locator('#plist .star')).toHaveAttribute('aria-pressed', 'true');
+  const extra = { ...(await ls(page, 'drills.saved'))[id], g: { k: 'zz', w: 'Cy', b: 'Di', date: '' } };
+  await other.evaluate(e => window.BlunderDrills.importData(JSON.stringify({ app: 'blunder-drills', v: 1, saved: { 'zz:5': e } })), extra);
+  expect(Object.keys(await ls(page, 'drills.saved')).sort()).toEqual([id, 'zz:5'].sort());
+  await expect(page.locator('#bTrain')).toHaveText('Train (2)');
+});
+
+test('the promotion picker closes when the board changes', async ({ page }) => {
+  const played = { san: 'Kd2', from: 'e1', to: 'd2', uci: 'e1d2', color: 'w', moveNo: 1 };
+  const p = { ply: 0, color: 'w', fen: '4k3/P7/8/8/8/8/8/4K3 w - - 0 1', best: 'a7a8q', pv: ['a7a8q'], refute: [], before: { cp: 900 }, after: { cp: 0 }, played, prev: null, type: 'blunder', drop: 0.9, depth: 10 };
+  await page.evaluate(p => window.BlunderDrills.importData(JSON.stringify({ app: 'blunder-drills', v: 1, saved: { 'zz:0': { p, g: { k: 'zz', w: 'Cy', b: 'Di', date: '' }, at: 1 } } })), p);
+  await page.locator('#bTrain').click();
+  await play(page, 'a7a8');
+  await expect(page.locator('#promo button')).toHaveCount(4);
+  await page.locator('.sq[data-sq="e1"]').click(); // another piece: the promotion is off
+  await expect(page.locator('#promo')).toBeHidden();
+  await play(page, 'a7a8');
+  await expect(page.locator('#promo')).toBeVisible();
+  await page.keyboard.press('s'); // Show solution takes the board
+  await expect(page.locator('#promo')).toBeHidden();
+  await page.locator('#bRetry').click();
+  await play(page, 'a7a8');
+  await page.locator('#promo button[aria-label="Promote to queen"]').click();
+  await expect(page.locator('#fb')).toContainText('Found it: a8=Q+');
+});
+
 test('an import does not trust the file: bad puzzles, statuses and stats are dropped, and no script runs', async ({ page }) => {
   const k = await seedGame(page), id = k + ':5';
   await page.locator('#plist .star').click();
